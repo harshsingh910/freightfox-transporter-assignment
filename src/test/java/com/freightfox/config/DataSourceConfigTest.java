@@ -22,6 +22,18 @@ class DataSourceConfigTest {
     }
 
     @Test
+    @DisplayName("Should parse Neon pooled PostgreSQL URL with sslmode and channel_binding")
+    void testParseNeonPooledPostgreSqlUrl() {
+        DataSourceConfig.ParsedUrl parsed = DataSourceConfig.parsePostgresUrl(
+                "postgresql://mock_owner:mock_pass@ep-lively-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        );
+        assertNotNull(parsed);
+        assertEquals("jdbc:postgresql://ep-lively-pooler.c-4.ap-southeast-1.aws.neon.tech:5432/neondb?sslmode=require&channel_binding=require", parsed.jdbcUrl());
+        assertEquals("mock_owner", parsed.username());
+        assertEquals("mock_pass", parsed.password());
+    }
+
+    @Test
     @DisplayName("Should parse postgres:// scheme")
     void testParsePostgresScheme() {
         DataSourceConfig.ParsedUrl parsed = DataSourceConfig.parsePostgresUrl(

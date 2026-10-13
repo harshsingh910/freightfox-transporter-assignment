@@ -14,7 +14,7 @@ import org.springframework.util.StringUtils;
 import javax.sql.DataSource;
 
 /**
- * Custom DataSource configuration ensuring seamless compatibility with Railway, Render,
+ * Custom DataSource configuration ensuring seamless compatibility with Neon, Railway, Render,
  * Heroku, containerized, and local development environments.
  */
 @Configuration
@@ -39,10 +39,13 @@ public class DataSourceConfig {
             config.setPassword(resolved.password());
         }
 
+        // Pool tuning optimized for cloud providers and transaction poolers (Neon PgBouncer)
         config.setMaximumPoolSize(Integer.parseInt(System.getenv().getOrDefault("DB_POOL_MAX_SIZE", "15")));
         config.setMinimumIdle(Integer.parseInt(System.getenv().getOrDefault("DB_POOL_MIN_IDLE", "2")));
         config.setConnectionTimeout(30000);
         config.setIdleTimeout(300000);
+        config.setMaxLifetime(600000); // 10 minutes maximum lifetime
+        config.setKeepaliveTime(30000); // 30s keepalive to prevent firewall/NAT drops
 
         log.info("Initialized DataSource: driver={}, url={}",
                 resolved.driverClassName(), sanitizeJdbcUrl(resolved.jdbcUrl()));
@@ -110,7 +113,7 @@ public class DataSourceConfig {
             }
         }
 
-        // Case B: Individual PGHOST / PGDATABASE variables (Railway Postgres linked service)
+        // Case B: Individual PGHOST / PGDATABASE variables (e.g. Neon, AWS RDS, Railway linked service)
         if (StringUtils.hasText(pgHost)) {
             int port = 5432;
             try {
@@ -118,6 +121,15 @@ public class DataSourceConfig {
             } catch (NumberFormatException ignored) {}
             String db = StringUtils.hasText(pgDatabase) ? pgDatabase.trim() : "postgres";
             String jdbcUrl = "jdbc:postgresql://" + pgHost.trim() + ":" + port + "/" + db;
+
+            // Ensure SSL is properly configured if specified or connecting to Neon
+            String sslMode = getFirstNonBlank(System.getenv("PGSSLMODE"), System.getenv("POSTGRES_SSLMODE"));
+            if (StringUtils.hasText(sslMode)) {
+                jdbcUrl += "?sslmode=" + sslMode.trim();
+            } else if (pgHost.contains(".neon.tech")) {
+                jdbcUrl += "?sslmode=require";
+            }
+
             String username = StringUtils.hasText(pgUser) ? pgUser.trim() : "postgres";
             return new ParsedDataSourceConfig(jdbcUrl, username, pgPassword, "org.postgresql.Driver");
         }
@@ -133,7 +145,7 @@ public class DataSourceConfig {
                     "Production environment ('prod') requires a valid PostgreSQL database. " +
                     "Neither DATABASE_URL nor PGHOST/PGDATABASE environment variables were provided, " +
                     "and fallback to in-memory H2 is rejected in production. " +
-                    "Please configure DATABASE_URL in your Railway service variables."
+                    "Please configure DATABASE_URL in your deployment environment variables."
             );
         }
 
@@ -192,16 +204,20 @@ public class DataSourceConfig {
             clean = clean.substring(0, qIdx);
         }
 
-        // If already JDBC format
-        if (clean.startsWith("jdbc:postgresql://")) {
+        // If already JDBC format without credentials in authority
+        if (clean.startsWith("jdbc:postgresql://") && !clean.contains("@")) {
             return new ParsedUrl(clean + query, null, null);
         }
-        if (clean.startsWith("jdbc:postgres://")) {
+        if (clean.startsWith("jdbc:postgres://") && !clean.contains("@")) {
             return new ParsedUrl("jdbc:postgresql://" + clean.substring("jdbc:postgres://".length()) + query, null, null);
         }
 
         // Strip scheme
-        if (clean.startsWith("postgresql://")) {
+        if (clean.startsWith("jdbc:postgresql://")) {
+            clean = clean.substring("jdbc:postgresql://".length());
+        } else if (clean.startsWith("jdbc:postgres://")) {
+            clean = clean.substring("jdbc:postgres://".length());
+        } else if (clean.startsWith("postgresql://")) {
             clean = clean.substring("postgresql://".length());
         } else if (clean.startsWith("postgres://")) {
             clean = clean.substring("postgres://".length());
