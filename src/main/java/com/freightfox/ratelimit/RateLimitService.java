@@ -33,11 +33,9 @@ public class RateLimitService {
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
 
     private final RateLimitProperties properties;
-    private final String redisHost;
-    private final int redisPort;
-    private final String redisPassword;
+    private final RedisClient redisClient;
+    private final io.lettuce.core.RedisURI redisUri;
 
-    private RedisClient redisClient;
     private StatefulRedisConnection<String, byte[]> redisConnection;
     private ProxyManager<String> proxyManager;
 
@@ -45,14 +43,12 @@ public class RateLimitService {
 
     public RateLimitService(
             RateLimitProperties properties,
-            @Value("${spring.data.redis.host:localhost}") String redisHost,
-            @Value("${spring.data.redis.port:6379}") int redisPort,
-            @Value("${spring.data.redis.password:}") String redisPassword
+            RedisClient redisClient,
+            io.lettuce.core.RedisURI redisUri
     ) {
         this.properties = properties;
-        this.redisHost = redisHost;
-        this.redisPort = redisPort;
-        this.redisPassword = redisPassword;
+        this.redisClient = redisClient;
+        this.redisUri = redisUri;
     }
 
     @PostConstruct
@@ -61,29 +57,29 @@ public class RateLimitService {
             log.info("Rate limiting is disabled by configuration.");
             return;
         }
+        tryConnect();
+    }
 
+    public synchronized boolean tryConnect() {
+        if (redisConnection != null && redisConnection.isOpen() && proxyManager != null) {
+            return true;
+        }
         try {
-            RedisURI.Builder uriBuilder = RedisURI.builder()
-                    .withHost(redisHost)
-                    .withPort(redisPort)
-                    .withTimeout(java.time.Duration.ofMillis(2000));
-
-            if (redisPassword != null && !redisPassword.isBlank()) {
-                uriBuilder.withPassword(redisPassword.toCharArray());
+            if (redisConnection != null) {
+                try {
+                    redisConnection.close();
+                } catch (Exception ignored) {}
             }
-
-            RedisURI redisUri = uriBuilder.build();
-            this.redisClient = RedisClient.create(redisUri);
             this.redisConnection = redisClient.connect(RedisCodec.of(StringCodec.UTF8, ByteArrayCodec.INSTANCE));
-
-            this.proxyManager = LettuceBasedProxyManager.builderFor(redisConnection)
-                    .build();
-
-            log.info("Successfully connected to Redis at {}:{} for distributed rate limiting.", redisHost, redisPort);
+            this.proxyManager = LettuceBasedProxyManager.builderFor(redisConnection).build();
+            log.info("Successfully connected to Redis at {}:{} for distributed rate limiting.",
+                    redisUri.getHost(), redisUri.getPort());
+            return true;
         } catch (Exception e) {
-            log.warn("Could not connect to Redis at {}:{}. Distributed rate limiting unavailable: {}",
-                    redisHost, redisPort, e.getMessage());
+            log.warn("Could not connect to Redis at {}:{}. Distributed rate limiting fallback active: {}",
+                    redisUri.getHost(), redisUri.getPort(), e.getMessage());
             this.proxyManager = null;
+            return false;
         }
     }
 
@@ -92,11 +88,6 @@ public class RateLimitService {
         if (redisConnection != null) {
             try {
                 redisConnection.close();
-            } catch (Exception ignored) {}
-        }
-        if (redisClient != null) {
-            try {
-                redisClient.shutdown();
             } catch (Exception ignored) {}
         }
     }
@@ -162,6 +153,9 @@ public class RateLimitService {
     }
 
     public boolean isRedisConnected() {
-        return proxyManager != null && redisConnection != null && redisConnection.isOpen();
+        if (proxyManager != null && redisConnection != null && redisConnection.isOpen()) {
+            return true;
+        }
+        return tryConnect();
     }
 }
