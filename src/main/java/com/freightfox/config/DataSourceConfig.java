@@ -4,11 +4,11 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
 
 import javax.sql.DataSource;
@@ -22,16 +22,13 @@ public class DataSourceConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);
 
-    @Value("${spring.profiles.active:local}")
-    private String activeProfile;
-
     @Bean
     @Primary
-    public DataSource dataSource(DataSourceProperties properties) {
+    public DataSource dataSource(DataSourceProperties properties, Environment environment) {
         HikariConfig config = new HikariConfig();
 
         // 1. Resolve PostgreSQL configuration from environment or properties
-        ParsedDataSourceConfig resolved = resolveConfig(properties, activeProfile);
+        ParsedDataSourceConfig resolved = resolveConfig(properties, environment);
 
         config.setJdbcUrl(resolved.jdbcUrl());
         config.setDriverClassName(resolved.driverClassName());
@@ -53,13 +50,31 @@ public class DataSourceConfig {
         return new HikariDataSource(config);
     }
 
+    public static ParsedDataSourceConfig resolveConfig(DataSourceProperties properties, Environment environment) {
+        String activeProfile = null;
+        if (environment != null) {
+            String[] activeProfiles = environment.getActiveProfiles();
+            if (activeProfiles != null && activeProfiles.length > 0) {
+                activeProfile = String.join(",", activeProfiles);
+            }
+        }
+        return resolveConfig(properties, activeProfile);
+    }
+
     public static ParsedDataSourceConfig resolveConfig(DataSourceProperties properties, String activeProfile) {
+        // 1. Check direct PostgreSQL URL environment variables
         String rawUrl = getFirstNonBlank(
                 System.getenv("DATABASE_URL"),
                 System.getenv("DATABASE_PUBLIC_URL"),
                 System.getenv("SPRING_DATASOURCE_URL"),
-                System.getenv("POSTGRES_URL")
+                System.getenv("POSTGRES_URL"),
+                System.getenv("JDBC_DATABASE_URL")
         );
+
+        // Fallback to properties.getUrl() if it represents a PostgreSQL URL
+        if (!StringUtils.hasText(rawUrl) && properties != null && isPostgresUrl(properties.getUrl())) {
+            rawUrl = properties.getUrl();
+        }
 
         String pgHost = getFirstNonBlank(
                 System.getenv("PGHOST"),
@@ -76,63 +91,60 @@ public class DataSourceConfig {
         );
         String pgUser = getFirstNonBlank(
                 System.getenv("PGUSER"),
-                System.getenv("POSTGRES_USER")
+                System.getenv("POSTGRES_USER"),
+                properties != null ? properties.getUsername() : null
         );
         String pgPassword = getFirstNonBlank(
                 System.getenv("PGPASSWORD"),
-                System.getenv("POSTGRES_PASSWORD")
+                System.getenv("POSTGRES_PASSWORD"),
+                properties != null ? properties.getPassword() : null
         );
 
         // Case A: PostgreSQL URL (postgres://, postgresql://, jdbc:postgresql://, jdbc:postgres://)
-        if (StringUtils.hasText(rawUrl)) {
+        if (StringUtils.hasText(rawUrl) && isPostgresUrl(rawUrl)) {
             ParsedUrl parsed = parsePostgresUrl(rawUrl);
-            String username = StringUtils.hasText(parsed.username()) ? parsed.username() : pgUser;
-            String password = StringUtils.hasText(parsed.password()) ? parsed.password() : pgPassword;
-            return new ParsedDataSourceConfig(parsed.jdbcUrl(), username, password, "org.postgresql.Driver");
+            if (parsed != null) {
+                String username = StringUtils.hasText(parsed.username()) ? parsed.username() : pgUser;
+                String password = StringUtils.hasText(parsed.password()) ? parsed.password() : pgPassword;
+                return new ParsedDataSourceConfig(parsed.jdbcUrl(), username, password, "org.postgresql.Driver");
+            }
         }
 
-        // Case B: Individual PGHOST / PGDATABASE variables
-        if (StringUtils.hasText(pgHost) && StringUtils.hasText(pgDatabase)) {
+        // Case B: Individual PGHOST / PGDATABASE variables (Railway Postgres linked service)
+        if (StringUtils.hasText(pgHost)) {
             int port = 5432;
             try {
                 port = Integer.parseInt(pgPort.trim());
             } catch (NumberFormatException ignored) {}
-            String jdbcUrl = "jdbc:postgresql://" + pgHost.trim() + ":" + port + "/" + pgDatabase.trim();
+            String db = StringUtils.hasText(pgDatabase) ? pgDatabase.trim() : "postgres";
+            String jdbcUrl = "jdbc:postgresql://" + pgHost.trim() + ":" + port + "/" + db;
             String username = StringUtils.hasText(pgUser) ? pgUser.trim() : "postgres";
             return new ParsedDataSourceConfig(jdbcUrl, username, pgPassword, "org.postgresql.Driver");
         }
 
         // Case C: Standard Spring DataSourceProperties (Local, H2, or custom driver)
-        String propUrl = properties.getUrl();
-        String propDriver = properties.getDriverClassName();
+        boolean isProd = isProduction(activeProfile);
+        String propUrl = properties != null ? properties.getUrl() : null;
+        String propDriver = properties != null ? properties.getDriverClassName() : null;
 
-        // Guard against mismatched H2 URL with PostgreSQL Driver in production
-        boolean isProd = "prod".equalsIgnoreCase(activeProfile) ||
-                (activeProfile != null && activeProfile.contains("prod"));
+        // Guard against H2 URL or missing configuration in production
+        if (isProd) {
+            throw new IllegalStateException(
+                    "Production environment ('prod') requires a valid PostgreSQL database. " +
+                    "Neither DATABASE_URL nor PGHOST/PGDATABASE environment variables were provided, " +
+                    "and fallback to in-memory H2 is rejected in production. " +
+                    "Please configure DATABASE_URL in your Railway service variables."
+            );
+        }
 
+        // Non-production (local or test):
         if (StringUtils.hasText(propUrl) && propUrl.startsWith("jdbc:h2:")) {
-            if (isProd) {
-                throw new IllegalStateException(
-                        "Production environment ('prod') requires a valid PostgreSQL database. " +
-                        "Neither DATABASE_URL nor PGHOST/PGDATABASE environment variables were provided, " +
-                        "and fallback to in-memory H2 is rejected in production. " +
-                        "Please configure DATABASE_URL in your Railway service variables."
-                );
-            }
-            // In non-production (e.g. test or local dev), ensure H2 driver is used with H2 URL
             return new ParsedDataSourceConfig(propUrl, properties.getUsername(), properties.getPassword(), "org.h2.Driver");
         }
 
         if (StringUtils.hasText(propUrl)) {
-            String driver = StringUtils.hasText(propDriver) ? propDriver : "org.postgresql.Driver";
+            String driver = StringUtils.hasText(propDriver) ? propDriver : "org.h2.Driver";
             return new ParsedDataSourceConfig(propUrl, properties.getUsername(), properties.getPassword(), driver);
-        }
-
-        if (isProd) {
-            throw new IllegalStateException(
-                    "Production environment ('prod') requires a valid PostgreSQL database, but no database configuration " +
-                    "(DATABASE_URL, SPRING_DATASOURCE_URL, or PGHOST) was found."
-            );
         }
 
         // Default local dev fallback to H2
@@ -144,7 +156,34 @@ public class DataSourceConfig {
         );
     }
 
+    public static boolean isProduction(String activeProfile) {
+        if ("prod".equalsIgnoreCase(activeProfile) || (activeProfile != null && activeProfile.contains("prod"))) {
+            return true;
+        }
+        String envProfile = System.getenv("SPRING_PROFILES_ACTIVE");
+        if ("prod".equalsIgnoreCase(envProfile) || (envProfile != null && envProfile.contains("prod"))) {
+            return true;
+        }
+        String propProfile = System.getProperty("spring.profiles.active");
+        if ("prod".equalsIgnoreCase(propProfile) || (propProfile != null && propProfile.contains("prod"))) {
+            return true;
+        }
+        return false;
+    }
+
+    public static boolean isPostgresUrl(String url) {
+        if (!StringUtils.hasText(url)) return false;
+        String clean = url.trim().toLowerCase();
+        return clean.startsWith("postgres://") ||
+                clean.startsWith("postgresql://") ||
+                clean.startsWith("jdbc:postgresql://") ||
+                clean.startsWith("jdbc:postgres://");
+    }
+
     public static ParsedUrl parsePostgresUrl(String rawUrl) {
+        if (!StringUtils.hasText(rawUrl)) {
+            return null;
+        }
         String clean = rawUrl.trim();
         String query = "";
         int qIdx = clean.indexOf('?');
@@ -154,8 +193,11 @@ public class DataSourceConfig {
         }
 
         // If already JDBC format
-        if (clean.startsWith("jdbc:postgresql://") || clean.startsWith("jdbc:postgres://")) {
+        if (clean.startsWith("jdbc:postgresql://")) {
             return new ParsedUrl(clean + query, null, null);
+        }
+        if (clean.startsWith("jdbc:postgres://")) {
+            return new ParsedUrl("jdbc:postgresql://" + clean.substring("jdbc:postgres://".length()) + query, null, null);
         }
 
         // Strip scheme
@@ -163,6 +205,8 @@ public class DataSourceConfig {
             clean = clean.substring("postgresql://".length());
         } else if (clean.startsWith("postgres://")) {
             clean = clean.substring("postgres://".length());
+        } else {
+            return null;
         }
 
         String userInfo = null;
@@ -200,6 +244,12 @@ public class DataSourceConfig {
             try {
                 port = Integer.parseInt(hostPort.substring(portColon + 1));
             } catch (NumberFormatException ignored) {}
+        }
+
+        if (!StringUtils.hasText(database) || "/".equals(database)) {
+            database = "/postgres";
+        } else if (!database.startsWith("/")) {
+            database = "/" + database;
         }
 
         String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + database + query;
