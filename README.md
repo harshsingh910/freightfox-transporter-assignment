@@ -1,624 +1,414 @@
-# FreightFox Transporter Assignment Platform
+# FreightFox Transporter Assignment on Lanes Platform
 
-A production-grade, secure, cloud-ready REST backend platform built for the **FreightFox Transporter Assignment on Lanes** hiring assignment. The platform ingests trade lanes, transporters, and cost quote matrices via JSON APIs or CSV upload, validates input datasets, and solves the optimal transporter-to-lane assignment problem under cost minimization, transporter limits, and complete coverage constraints.
+[![Java 21](https://img.shields.io/badge/Java-21%20LTS-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot 3.3.4](https://img.shields.io/badge/Spring%20Boot-3.3.4-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon%20Cloud-4169E1?logo=postgresql&logoColor=white)](https://neon.tech/)
+[![Redis](https://img.shields.io/badge/Redis-7%20Distributed-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![Swagger](https://img.shields.io/badge/OpenAPI-Swagger%20UI-85EA2D?logo=swagger&logoColor=black)](https://freightfox-transporter-assignment-production.up.railway.app/swagger-ui/index.html)
+[![Railway](https://img.shields.io/badge/Deployed-Railway-0B0D0E?logo=railway&logoColor=white)](https://freightfox-transporter-assignment-production.up.railway.app)
+[![Tests Passing](https://img.shields.io/badge/Tests-60%20Passed-success?logo=junit5&logoColor=white)](#automated-testing--regression-coverage)
+
+A production-grade, secure, cloud-native REST backend platform built for the **FreightFox Transporter Assignment on Lanes** technical assessment. The platform solves the multi-lane freight procurement problem by optimizing transporter selection and lane assignment under total spend minimization, transporter fleet limits, and complete coverage constraints.
+
+> **Note:** This repository is an **API-only backend service**. There is no graphical user interface. All interactions occur through REST endpoints, the live OpenAPI / Swagger UI interface, or HTTP clients such as cURL and Postman.
+
+---
+
+## Live Demo & API Documentation
+
+| Resource | Direct Link | Description |
+|---|---|---|
+| **Live Swagger UI** | [https://freightfox-transporter-assignment-production.up.railway.app/swagger-ui/index.html](https://freightfox-transporter-assignment-production.up.railway.app/swagger-ui/index.html) | Interactive OpenAPI 3 interface with JWT Bearer authorization |
+| **Production Health Check** | [https://freightfox-transporter-assignment-production.up.railway.app/api/v1/health](https://freightfox-transporter-assignment-production.up.railway.app/api/v1/health) | Real-time backend status, database, and Redis health probes |
+| **Production API Base URL** | [https://freightfox-transporter-assignment-production.up.railway.app](https://freightfox-transporter-assignment-production.up.railway.app/) | Root URL for all production REST API requests |
+| **GitHub Repository** | [https://github.com/harshsingh910/freightfox-transporter-assignment](https://github.com/harshsingh910/freightfox-transporter-assignment) | Canonical source repository with full commit and audit history |
 
 ---
 
 ## Table of Contents
 
-1. [Project Overview](#project-overview)
-2. [Business Problem](#business-problem)
-3. [Key Features](#key-features)
+1. [Overview & Problem Statement](#overview--problem-statement)
+2. [Key Features](#key-features)
+3. [Architecture & Request Flow](#architecture--request-flow)
 4. [Technology Stack](#technology-stack)
-5. [Architecture Diagram](#architecture-diagram)
-6. [Database Schema & ER Diagram](#database-schema--er-diagram)
-7. [Core Optimization Engine](#core-optimization-engine)
-   - [Formal Problem Formulation](#formal-problem-formulation)
-   - [Lexicographic Objective](#lexicographic-objective)
-   - [Algorithm & Proof of Optimality](#algorithm--proof-of-optimality)
-   - [Complexity Analysis & Scalability Safeguards](#complexity-analysis--scalability-safeguards)
-8. [API Endpoints Reference](#api-endpoints-reference)
-9. [Authentication & Role-Based Authorization](#authentication--role-based-authorization)
-10. [Password Validation Policy](#password-validation-policy)
-11. [Distributed Redis Rate Limiting](#distributed-redis-rate-limiting)
-12. [Redis Caching & Invalidation Strategy](#redis-caching--invalidation-strategy)
-13. [CSV Format & Import Workflow](#csv-format--import-workflow)
-14. [Local Development Setup](#local-development-setup)
-15. [Environment Variables Reference](#environment-variables-reference)
-16. [Docker & Containerization](#docker--containerization)
-17. [Automated Testing & Benchmark Results](#automated-testing--benchmark-results)
-18. [Railway Deployment Guide](#railway-deployment-guide)
-19. [Swagger / OpenAPI Documentation](#swagger--openapi-documentation)
-20. [Example API Requests & Responses](#example-api-requests--responses)
-21. [Security & Production Hardening](#security--production-hardening)
-22. [Loom Demonstration Checklist](#loom-demonstration-checklist)
+5. [Core Optimization Engine](#core-optimization-engine)
+6. [CSV Dataset Format & Validation Rules](#csv-dataset-format--validation-rules)
+7. [API Reference & Endpoint Table](#api-reference--endpoint-table)
+8. [Example cURL API Requests](#example-curl-api-requests)
+9. [Authentication & Authorization](#authentication--authorization)
+10. [Database Design & Schema](#database-design--schema)
+11. [Redis Caching & Distributed Rate Limiting](#redis-caching--distributed-rate-limiting)
+12. [Local Setup & Installation](#local-setup--installation)
+13. [Environment Variables & Secure Configuration](#environment-variables--secure-configuration)
+14. [Automated Testing & Regression Coverage](#automated-testing--regression-coverage)
+15. [Docker & Containerization](#docker--containerization)
+16. [Production Deployment on Railway](#production-deployment-on-railway)
+17. [Example End-to-End Workflow](#example-end-to-end-workflow)
+18. [Troubleshooting Guide](#troubleshooting-guide)
+19. [Security Hardening & Production Safeguards](#security-hardening--production-safeguards)
+20. [Limitations & Scaling Considerations](#limitations--scaling-considerations)
+21. [Future Planned Improvements](#future-planned-improvements)
 
 ---
 
-## 1. Project Overview
+## Overview & Problem Statement
 
-Freight transport logistics across Indian trade corridors involves assigning multiple transport service providers across high-volume trade lanes. To balance supplier diversification and operational consolidation, logistics managers impose a ceiling on the number of distinct transporters permitted ($K$). Within that ceiling, every lane must be covered by a transporter that submitted a quote, and the overall freight spend must be minimized while maximizing utilization of the permitted transporters.
+In freight logistics networks across India, enterprise shippers contract freight across dozens of origin-destination trade lanes (e.g., *Mumbai &rarr; Delhi*, *Delhi &rarr; Bangalore*, *Chennai &rarr; Kolkata*). Multiple transport service providers submit cost quotes for lanes they can service.
 
-This application provides:
-- Exact combinatorial optimization solving the problem to global optimality.
-- Ingestion via original JSON specifications and transactional CSV upload.
-- Full Spring Security with JWT Bearer authentication and role-based access control (RBAC).
-- Redis-backed distributed token-bucket rate limiting via Bucket4j.
-- Distributed Redis caching with multi-entity eviction.
-- Normalized PostgreSQL persistence managed via Flyway migrations.
-- Dynamic JDBC connection synthesis for Railway, Render, and containerized deployments.
+Shippers face a dual operational challenge:
+1. **Consolidation Ceiling ($K$):** Managing too many carriers creates operational overhead. Logistics managers impose a ceiling on the number of distinct transporters permitted in the final network ($K$).
+2. **Supplier Diversification vs. Cost:** Sole-sourcing creates supply-chain vulnerability, while unrestricted carrier sprawl increases tracking costs. The assignment engine must select a subset of at most $K$ carriers that can service **every single lane** at the lowest total freight spend.
 
----
+### The Optimization Objective
 
-## 2. Business Problem
+The platform implements the assignment's official multi-objective strategy, identified as:
+$$\text{LEXICOGRAPHIC\_MAX\_TRANSPORTERS\_MIN\_COST}$$
 
-Given:
-- $N$ Trade Lanes (e.g., *Mumbai &rarr; Delhi*, *Delhi &rarr; Bangalore*, etc.)
-- $M$ Transporters (e.g., *T1, T2, ... T7*)
-- Cost Quote Matrix $C_{i, j}$ where transporter $j$ quotes rate $C_{i, j} > 0$ on lane $i$
-- Transporter Limit $K \ge 1$
+The optimization engine evaluates candidate solutions using a strict lexicographical hierarchy:
+1. **Priority 1 (Supplier Diversification):** Maximize the number of distinct transporters utilized ($M_{\text{used}} \le K$). If $K = 3$ and feasible combinations exist that utilize 3 transporters, solutions using only 1 or 2 transporters are eliminated to maintain vendor resilience.
+2. **Priority 2 (Cost Minimization):** Among all feasible subsets achieving that maximal transporter count, minimize the aggregate procurement spend:
+   $$\min \sum_{i=1}^N \min_{j \in S} C_{i, j}$$
+3. **Priority 3 (Deterministic Tie-Breaking):** If multiple combinations achieve both identical carrier count and identical minimum cost, break ties deterministically using the natural lexicographical order of transporter identifiers.
 
-**Constraints & Objectives:**
-1. **Full Lane Coverage:** Every lane $i \in \{1, \dots, N\}$ must be assigned to exactly one transporter $j$.
-2. **Transporter Limit:** At most $K$ distinct transporters may be utilized in the final assignment.
-3. **Valid Quotes Only:** Missing quotes must never be treated as zero cost or assigned arbitrarily.
-4. **Lexicographic Optimization:**
-   - **Priority 1:** Maximize the number of distinct transporters utilized ($M_{used} \le K$) to foster competitive supplier diversity.
-   - **Priority 2:** Minimize total cost $\sum_{i=1}^N C_{i, j_i}$ among solutions achieving maximal transporter utilization.
-   - **Priority 3:** Deterministic tie-breaking on lexicographical transporter IDs.
+The engine also supports a pure cost minimization objective (`MIN_COST`), selectable per request.
 
 ---
 
-## 3. Key Features
+## Key Features
 
-- **Exact Combinatorial Optimizer:** Evaluates candidate transporter subsets to guarantee global cost minimality.
-- **REST Contract Compliance:** Retains exact compatibility with the assignment's original primary endpoints:
-  - `POST /api/v1/transporters/input`
-  - `POST /api/v1/transporters/assignment`
-- **Transactional CSV Importer:** Parses `transporter_assignment_data.csv`, validates headers, detects duplicates, trims whitespace, and ensures atomic database upserts.
-- **Enterprise Security:** BCrypt password hashing, JWT signing/verification, deny-by-default endpoint authorization, and admin bootstrap.
-- **Distributed Rate Limiting:** Redis + Bucket4j distributed token bucket with tier-based quotas and safe in-memory fallback.
-- **Zero-Downtime Database Migrations:** Flyway-managed schema creation with PostgreSQL constraints and indexes.
-- **Interactive API Documentation:** Full OpenAPI 3 / Swagger UI with Bearer JWT authentication testing.
-
----
-
-## 4. Technology Stack
-
-| Component | Technology | Version | Description |
-|---|---|---|---|
-| Runtime | Java OpenJDK | 21.0.12 LTS | Virtual threads and modern pattern matching |
-| Framework | Spring Boot | 3.3.4 | Core enterprise application framework |
-| Security | Spring Security + JJWT | 6.3 / 0.12.6 | Stateless JWT Bearer authentication |
-| Persistence | Spring Data JPA / Hibernate | 6.5.3 | Object-relational mapping |
-| Database | PostgreSQL / H2 | 16 / 2.2 | Production PostgreSQL / local test fallback |
-| Migrations | Flyway | 10.15 | Versioned database schema migrations |
-| Cache & Rate Limit | Spring Data Redis + Bucket4j | 3.3.4 / 8.10.1 | Distributed cache and token bucket rate limiter |
-| CSV Processing | Apache Commons CSV | 1.11.0 | Robust RFC 4180 CSV parser |
-| Documentation | Springdoc OpenAPI | 2.6.0 | OpenAPI 3.0 & Swagger UI |
-| Build Tool | Apache Maven | 3.9.16 | Multi-stage container packaging |
-| Containerization | Docker & Docker Compose | Multi-stage | Non-root Alpine runtime image |
+- **Exact Combinatorial Optimization:** Enumerates and evaluates carrier subsets to guarantee a mathematically exact global optimum without heuristic approximation error.
+- **Dual Ingestion Pipelines:** Supports both transactional RFC 4180 CSV file uploads (`POST /api/v1/import/csv`) and programmatic JSON input requests (`POST /api/v1/transporters/input`).
+- **Enterprise Spring Security:** Stateless JWT authentication (HMAC-SHA 256-bit+), BCrypt password hashing (cost factor 12), strict 12-character password complexity policies, and deny-by-default role-based authorization (`ROLE_USER`, `ROLE_ADMIN`).
+- **Fail-Fast Production Secret Guards:** Reject missing secrets, public repository defaults, and weak keys on startup in the `prod` profile.
+- **Distributed Redis Rate Limiting:** Enforces token-bucket rate limits powered by Bucket4j and Lettuce across login, registration, CSV import, and optimization endpoints, with automatic in-memory fallback.
+- **Distributed Redis Caching:** Caches lane and transporter queries with multi-entity eviction (`@CacheEvict`) on input ingestion.
+- **Cloud Database Persistence:** PostgreSQL 16 persistence (Neon cloud in production) managed through Flyway V1 schema migrations with foreign keys, checks, and compound indexes.
+- **Robust Cloud DataSource Parsing:** Transparently parses and normalizes Railway `DATABASE_URL` (`postgresql://` or `postgres://`), injecting required SSL parameters for cloud pooling.
+- **Paginated Assignment History:** Safe DTO-based pagination (`GET /api/v1/assignments`) completely decoupled from Hibernate sessions, preventing `LazyInitializationException`.
+- **Comprehensive Test Suite:** 60 automated unit, integration, and security regression tests verified with Java 21 and Maven.
 
 ---
 
-## 5. Architecture Diagram
+## Architecture & Request Flow
 
 ```mermaid
 graph TD
-    Client["Client / Postman / Swagger UI"]
-    
-    subgraph "Spring Boot Application (Port: ${PORT:-8080})"
+    Client["Client / cURL / Swagger UI / Postman"]
+
+    subgraph "Spring Boot 3.3.4 Backend (Port 8080)"
         Security["JwtAuthenticationFilter<br/>(Bearer Token Validation & MDC Trace ID)"]
-        RateLimiter["RateLimitFilter<br/>(Bucket4j + Redis Quotas)"]
-        
+        RateLimiter["RateLimitFilter<br/>(Bucket4j + Redis Token Bucket)"]
+
         subgraph "REST Controllers"
-            AuthController["AuthController<br/>/api/v1/auth/*"]
-            AssignmentController["AssignmentController<br/>/api/v1/transporters/*"]
-            CsvController["CsvImportController<br/>/api/v1/import/csv"]
-            LaneController["LaneController<br/>/api/v1/lanes"]
-            TransporterController["TransporterController<br/>/api/v1/transporters"]
-            HealthController["HealthController<br/>/api/v1/health"]
-        end
-        
-        subgraph "Application Services"
-            AuthService["AuthService<br/>(Password Validation & BCrypt)"]
-            AssignmentService["AssignmentService<br/>(Problem Orchestration)"]
-            CsvImportService["CsvImportService<br/>(Commons CSV Parser)"]
-            LaneService["LaneService"]
-            TransporterService["TransporterService"]
+            HealthCtrl["HealthController<br/>/api/v1/health"]
+            AuthCtrl["AuthController<br/>/api/v1/auth/*"]
+            CsvCtrl["CsvImportController<br/>/api/v1/import/csv"]
+            LaneCtrl["LaneController<br/>/api/v1/lanes"]
+            TransCtrl["TransporterController<br/>/api/v1/transporters"]
+            AssignCtrl["AssignmentController<br/>/api/v1/transporters/*<br/>/api/v1/assignments/*"]
         end
 
-        subgraph "Core Optimization Engine (Spring-Decoupled)"
-            Optimizer["ExactSubsetsTransporterOptimizer<br/>- Subset Generation<br/>- Complete Coverage Check<br/>- Lexicographic Selection"]
+        subgraph "Application Services"
+            AuthService["AuthService<br/>(BCrypt & Account Preservation)"]
+            CsvParser["CsvParserService<br/>(Apache Commons CSV)"]
+            CsvImport["CsvImportService<br/>(Transactional Upserts)"]
+            AssignService["AssignmentService<br/>(Problem Orchestration)"]
         end
-        
-        GlobalException["GlobalExceptionHandler<br/>(Consistent ErrorResponse + Retry-After)"]
+
+        subgraph "Decoupled Optimization Engine"
+            Optimizer["ExactSubsetsTransporterOptimizer<br/>• Combinatorial Subset Enumeration<br/>• Complete Coverage Verification<br/>• Lexicographic Tie-Breaking"]
+        end
+
+        GlobalEx["GlobalExceptionHandler<br/>(Structured Error Responses + Retry-After)"]
     end
-    
-    subgraph "External Infrastructure"
-        Redis[("Redis 7<br/>- Distributed Rate Limit State<br/>- Cache (lanes, transporters)")]
-        Postgres[("PostgreSQL 16<br/>- Flyway V1 Schema<br/>- Lanes, Transporters, Quotes<br/>- Assignment Runs")]
+
+    subgraph "External Cloud Infrastructure"
+        RedisServer[("Redis 7 (Lettuce)<br/>• Distributed Rate Limiting<br/>• Query Cache (lanes, transporters)")]
+        PostgresDB[("PostgreSQL 16 (Neon)<br/>• Flyway Schema Migrations<br/>• Lanes, Transporters, Quotes<br/>• Historical Assignment Runs")]
     end
 
     Client -->|HTTP Request| Security
     Security --> RateLimiter
-    RateLimiter --> AuthController
-    RateLimiter --> AssignmentController
-    RateLimiter --> CsvController
-    RateLimiter --> LaneController
-    RateLimiter --> TransporterController
-    RateLimiter --> HealthController
-    
-    AssignmentController --> AssignmentService
-    AssignmentService --> Optimizer
-    AssignmentService --> Postgres
-    
-    CsvController --> CsvImportService
-    CsvImportService --> Postgres
-    
-    RateLimiter -.-> Redis
-    LaneService -.-> Redis
-    AssignmentService -.-> Postgres
+    RateLimiter --> HealthCtrl
+    RateLimiter --> AuthCtrl
+    RateLimiter --> CsvCtrl
+    RateLimiter --> LaneCtrl
+    RateLimiter --> TransCtrl
+    RateLimiter --> AssignCtrl
+
+    CsvCtrl --> CsvImport
+    CsvImport --> CsvParser
+    AssignCtrl --> AssignService
+    AssignService --> Optimizer
+
+    AuthService -.-> PostgresDB
+    CsvImport -.-> PostgresDB
+    AssignService -.-> PostgresDB
+    AssignService -.-> RedisServer
+    RateLimiter -.-> RedisServer
+    HealthCtrl -.-> PostgresDB
+    HealthCtrl -.-> RedisServer
 ```
 
 ---
 
-## 6. Database Schema & ER Diagram
+## Technology Stack
 
-The PostgreSQL database schema is strictly managed via Flyway (`db/migration/V1__init_schema.sql`).
-
-```mermaid
-erDiagram
-    USERS {
-        BIGSERIAL id PK
-        VARCHAR username UK
-        VARCHAR email UK
-        VARCHAR password_hash
-        VARCHAR role
-        BOOLEAN enabled
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
-    }
-
-    LANES {
-        BIGSERIAL id PK
-        VARCHAR external_lane_id UK
-        VARCHAR origin
-        VARCHAR destination
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
-    }
-
-    TRANSPORTERS {
-        BIGSERIAL id PK
-        VARCHAR external_transporter_id UK
-        VARCHAR name
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
-    }
-
-    TRANSPORTER_QUOTES {
-        BIGSERIAL id PK
-        BIGINT lane_id FK
-        BIGINT transporter_id FK
-        NUMERIC quote_amount
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
-    }
-
-    ASSIGNMENT_RUNS {
-        BIGSERIAL id PK
-        INT requested_max_transporters
-        INT selected_transporter_count
-        NUMERIC total_cost
-        VARCHAR status
-        VARCHAR optimization_objective
-        INT lanes_covered
-        VARCHAR created_by
-        TIMESTAMP created_at
-    }
-
-    LANE_ASSIGNMENTS {
-        BIGSERIAL id PK
-        BIGINT assignment_run_id FK
-        BIGINT lane_id FK
-        BIGINT transporter_id FK
-        NUMERIC quote_amount
-    }
-
-    LANES ||--o{ TRANSPORTER_QUOTES : "quoted on"
-    TRANSPORTERS ||--o{ TRANSPORTER_QUOTES : "submits"
-    ASSIGNMENT_RUNS ||--|{ LANE_ASSIGNMENTS : "contains"
-    LANES ||--o{ LANE_ASSIGNMENTS : "assigned to"
-    TRANSPORTERS ||--o{ LANE_ASSIGNMENTS : "allocated to"
-```
+| Layer | Component | Version | Description |
+|---|---|---|---|
+| **Language** | Java OpenJDK | `21.0.12 LTS` | Modern Java runtime utilizing records, pattern matching, and sealed types |
+| **Framework** | Spring Boot | `3.3.4` | Enterprise application foundation with Spring MVC, Actuator, and Validation |
+| **Security** | Spring Security + JJWT | `6.3.3` / `0.12.6` | Stateless JWT Bearer token authentication, BCrypt hashing, and method security |
+| **Persistence** | Spring Data JPA / Hibernate | `6.5.3` | ORM entities, Spring Data repositories, HikariCP connection pooling |
+| **Primary Database** | PostgreSQL | `16` (Neon Cloud) | Production relational store with ACID guarantees, foreign keys, and indexes |
+| **Test Database** | H2 Database Engine | `2.2.224` | In-memory database with PostgreSQL compatibility mode for isolated test suites |
+| **Migrations** | Flyway | `10.15.2` | Versioned, repeatable SQL schema migrations (`V1__init_schema.sql`) |
+| **Caching & Redis** | Spring Data Redis + Lettuce | `3.3.4` / `6.3.2` | Distributed caching with automatic fallback to `ConcurrentMapCacheManager` |
+| **Rate Limiting** | Bucket4j | `8.10.1` | Distributed token-bucket algorithm using `bucket4j-redis` Lettuce CAS proxy |
+| **CSV Processing** | Apache Commons CSV | `1.11.0` | RFC 4180-compliant CSV parser handling whitespace, missing values, and quotes |
+| **API Docs** | Springdoc OpenAPI Starter | `2.6.0` | OpenAPI 3.0 specification generator and interactive Swagger UI interface |
+| **Build & Packaging**| Apache Maven / Wrapper | `3.9.x` | Dependency management and multi-stage container build tool |
+| **Containerization**| Docker | Alpine | Multi-stage build producing an unprivileged runtime container (`appuser`) |
+| **Deployment** | Railway | Cloud | Automated container deployment with persistent Redis and Neon PostgreSQL |
 
 ---
 
-## 7. Core Optimization Engine
+## Core Optimization Engine
 
 ### Formal Problem Formulation
 
-Let:
-- $L = \{l_1, l_2, \dots, l_N\}$ be the set of lanes.
-- $T = \{t_1, t_2, \dots, t_M\}$ be the set of available transporters.
-- $C(l, t) \in \mathbb{R}^+$ be the quote amount if transporter $t$ quotes on lane $l$.
-- $K \ge 1$ be the user-specified maximum transporter limit.
+Given:
+- A set of $N$ trade lanes: $L = \{l_1, l_2, \dots, l_N\}$
+- A set of $M$ transporters: $T = \{t_1, t_2, \dots, t_M\}$
+- A cost matrix $C_{i, j} > 0$ representing the quote submitted by transporter $t_j$ on lane $l_i$
+- A transporter ceiling constraint $K \ge 1$
 
-A feasible assignment is a mapping $\sigma: L \to T$ such that:
-1. $C(l, \sigma(l))$ exists for all $l \in L$.
-2. The set of used transporters $U(\sigma) = \{\sigma(l) \mid l \in L\}$ satisfies $|U(\sigma)| \le K$.
+**Subject to:**
+1. **Complete Coverage:** Every lane $l_i$ must be assigned to exactly one transporter $t_j \in S$.
+2. **Fleet Constraint:** The selected subset $S \subseteq T$ must satisfy $|S| \le \min(K, M)$.
+3. **Quote Validity:** An assignment is feasible only if $C_{i, j}$ exists (i.e., transporter $t_j$ actually submitted a quote for lane $l_i$).
+4. **Lane Allocation:** For any chosen subset $S$, each lane $l_i$ is assigned to the transporter in $S$ offering the lowest quote:
+   $$j^*(i) = \arg\min_{j \in S} C_{i, j}$$
 
-### Lexicographic Objective
+### Algorithm Execution & Tie-Breaking
 
-1. **Maximize Transporter Usage:** $\max |U(\sigma)|$ subject to $|U(\sigma)| \le K$.
-2. **Minimize Cost:** Minimize $\sum_{l \in L} C(l, \sigma(l))$ among assignments achieving the maximum transporter count.
-3. **Deterministic Tie-Breaking:** If two solutions have identical used transporter count and identical cost, ties are broken deterministically by sorting transporter IDs lexicographically, then by lane allocation.
+The `ExactSubsetsTransporterOptimizer` operates as follows:
+1. **Quote Matrix Indexing:** Loads all quotes into a two-level hash map (`Map<LaneId, Map<TransporterId, Quote>>`) enabling $O(1)$ quote lookups.
+2. **Pre-check Feasibility:** Verifies that every lane has at least one quote from some transporter in $T$. If any lane has zero quotes, optimization immediately returns infeasible.
+3. **Combinatorial Subset Generation:** Generates all combinations $\binom{M}{k}$ for subset sizes $k = 1, 2, \dots, \min(K, M)$.
+4. **Subset Evaluation:** For each candidate subset $S$:
+   - Verifies whether every lane can be serviced by at least one member of $S$.
+   - Computes total cost $\sum_{i=1}^N \min_{j \in S} C_{i, j}$.
+   - Resolves intra-lane quote ties deterministically by selecting the lexicographically smaller transporter identifier.
+5. **Multi-Objective Selection:**
+   - Under `LEXICOGRAPHIC_MAX_TRANSPORTERS_MIN_COST`:
+     $$\text{Candidate } A \succ B \iff |A_{\text{used}}| > |B_{\text{used}}| \quad \lor \quad (|A_{\text{used}}| = |B_{\text{used}}| \land \text{Cost}(A) < \text{Cost}(B))$$
+   - Under `MIN_COST`:
+     $$\text{Candidate } A \succ B \iff \text{Cost}(A) < \text{Cost}(B) \quad \lor \quad (\text{Cost}(A) = \text{Cost}(B) \land |A_{\text{used}}| > |B_{\text{used}}|)$$
+6. **Deterministic Tie-Breaker:** When costs and carrier counts are equal, compares sorted carrier ID lists lexicographically.
 
-### Algorithm & Proof of Optimality
+### Complexity & Scalability Safeguards
 
-**Algorithm:**
-1. Generate candidate transporter subsets $S \subseteq T$ of cardinality $k \in \{1, \dots, \min(K, M)\}$.
-2. For each subset $S$:
-   - Check if $S$ covers all lanes: for every $l \in L$, $\exists t \in S$ with a quote $C(l, t)$. If not, discard $S$.
-   - For each lane $l$, greedily assign $t^*(l) = \arg\min_{t \in S} C(l, t)$ (tie-breaking on lowest $t$).
-   - Compute total cost $\text{Cost}(S) = \sum_{l \in L} C(l, t^*(l))$ and actual used transporters $U(S) = \{t^*(l) \mid l \in L\}$.
-3. Sort all feasible solutions by the lexicographic comparator:
-   $$(-|U(S)|, \text{Cost}(S), \text{lex}(U(S)))$$
-4. Return the top candidate.
-
-**Proof of Optimality:**  
-Any feasible assignment $\sigma$ utilizes a set of distinct transporters $U(\sigma)$ of size $\le K$. Because $U(\sigma) \subseteq T$ and $|U(\sigma)| \le K$, $U(\sigma)$ is identical to at least one enumerated subset $S$. For any fixed subset $S$, each lane assignment decision $t^*(l)$ is independent because there are no mutual capacity constraints across lanes. Thus, choosing the minimum cost quote for each lane independently within $S$ guarantees the minimum possible cost achievable using transporters from $S$. Exhaustive evaluation across all candidate subsets of size $\le K$ therefore guarantees reaching the global optimum.
-
-### Benchmark on Provided Hiring Dataset
-
-Running the optimizer on the actual `transporter_assignment_data.csv` (9 trade lanes, 7 transporters, 63 quotes) with $K=3$:
-- **Total Minimum Cost:** **₹134,876.00**
-- **Selected Transporters:** **T1, T4, T6** (3 transporters used)
-- **Lanes Covered:** 9/9
-- **Allocations:**
-  - Lane 1 &rarr; T4 (₹14,400.00)
-  - Lane 2 &rarr; T1 (₹10,512.00)
-  - Lane 3 &rarr; T4 (₹14,316.00)
-  - Lane 4 &rarr; T4 (₹10,678.00)
-  - Lane 5 &rarr; T4 (₹13,032.00)
-  - Lane 6 &rarr; T1 (₹13,567.00)
-  - Lane 7 &rarr; T1 (₹10,015.00)
-  - Lane 8 &rarr; T6 (₹10,492.00)
-  - Lane 9 &rarr; T6 (₹37,864.00)
-  - **Sum:** ₹14,400 + ₹10,512 + ₹14,316 + ₹10,678 + ₹13,032 + ₹13,567 + ₹10,015 + ₹10,492 + ₹37,864 = **₹134,876.00**
+- **Combinatorial Combinations:** The total number of subsets evaluated is $\sum_{k=1}^{\min(K, M)} \binom{M}{k}$.
+- **Combinatorial Cap:** The optimizer calculates the total combinations beforehand. If this exceeds `maxCombinatorialSubsets` (default: **50,000**), the optimizer aborts before execution to prevent CPU starvation.
+- **Execution Deadline:** If evaluation time exceeds `maxRuntimeMillis` (default: **30,000 ms**), a runtime exception is thrown.
+- **Infeasibility Response:** If no combination of up to $K$ carriers can cover all lanes, the API returns **HTTP 422 Unprocessable Entity** with an informative `INFEASIBLE_ASSIGNMENT` error payload.
 
 ---
 
-## 8. API Endpoints Reference
+## CSV Dataset Format & Validation Rules
 
-| Method | Endpoint | Role | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/register` | Public | Register standard user with password validation |
-| `POST` | `/api/v1/auth/login` | Public | Authenticate user and issue JWT Bearer token |
-| `GET` | `/api/v1/auth/me` | USER, ADMIN | Retrieve authenticated user profile |
-| `POST` | `/api/v1/transporters/input` | **ADMIN** | **Primary API 1:** Ingest lanes and quotes JSON |
-| `POST` | `/api/v1/transporters/assignment` | USER, ADMIN | **Primary API 2:** Execute exact optimization with $K$ |
-| `POST` | `/api/v1/import/csv` | **ADMIN** | Multipart CSV dataset upload & transactional import |
-| `GET` | `/api/v1/lanes` | USER, ADMIN | Paginated list of registered trade lanes |
-| `GET` | `/api/v1/lanes/{id}` | USER, ADMIN | Get single lane by internal ID |
-| `GET` | `/api/v1/transporters` | USER, ADMIN | Paginated list of registered transporters |
-| `GET` | `/api/v1/transporters/{id}` | USER, ADMIN | Get single transporter by internal ID |
-| `GET` | `/api/v1/assignments/{id}` | USER, ADMIN | Retrieve saved assignment run and quotes |
-| `GET` | `/api/v1/assignments` | USER, ADMIN | Paginated history of assignment runs |
-| `GET` | `/api/v1/health` | Public | Detailed health check (PostgreSQL + Redis status) |
-| `GET` | `/swagger-ui/index.html` | Public | Interactive Swagger UI API documentation |
-| `GET` | `/v3/api-docs` | Public | Raw OpenAPI 3 JSON definition |
+The platform accepts CSV uploads via `POST /api/v1/import/csv`. The expected format conforms to the standard procurement matrix provided in `transporter_assignment_data.csv`.
 
----
+### CSV Structure
 
-## 9. Authentication & Role-Based Authorization
+- **Row 1 (Header):** First column must identify trade lanes (`Trade Lane` or similar). Subsequent columns represent individual transporter names/identifiers (`T1`, `T2`, etc.).
+- **Rows 2..N (Data Rows):** First column contains the trade lane identifier or origin-destination pair. Subsequent columns contain the positive numeric quote amounts from each transporter.
 
-1. **Stateless JWT Security:** Upon login, a signed HMAC-SHA256 JWT is issued containing user identity and role claims.
-2. **Deny-by-Default Authorization:** Every API route is protected by default unless explicitly exposed.
-3. **Role Segregation:**
-   - `ROLE_USER`: Read-only queries and assignment calculations.
-   - `ROLE_ADMIN`: Dataset management (`/transporters/input` and `/import/csv`).
-4. **Bootstrap Administrator:** On application boot, an administrator account is initialized via environment configuration (`BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`).
-
----
-
-## 10. Password Validation Policy
-
-All passwords submitted to `/api/v1/auth/register` must satisfy:
-- Minimum length: **12 characters**; Maximum length: **128 characters**.
-- At least one uppercase letter (`A-Z`).
-- At least one lowercase letter (`a-z`).
-- At least one digit (`0-9`).
-- At least one special symbol (e.g. `!@#$%^&*()`).
-- Rejection of common phrases via a built-in denylist.
-- Passwords are never logged or stored in plaintext; they are hashed using **BCrypt (cost factor 12)**.
-
----
-
-## 11. Distributed Redis Rate Limiting
-
-The application uses **Bucket4j with Redis Lettuce CAS** (`LettuceBasedProxyManager`) to enforce distributed rate-limit quotas shared across instances:
-
-| Endpoint Tier | Capacity | Refill Window | Identity Key |
-|---|---|---|---|
-| `POST /api/v1/auth/login` | 5 tokens | 60 seconds | Remote Client IP |
-| `POST /api/v1/auth/register` | 5 tokens | 3600 seconds | Remote Client IP |
-| `POST /api/v1/transporters/assignment` | 20 tokens | 60 seconds | Authenticated Username |
-| `POST /api/v1/import/csv` | 5 tokens | 60 seconds | Authenticated Username |
-| General API | 120 tokens | 60 seconds | Authenticated Username / IP |
-
-When a limit is exhausted, the server returns **HTTP 429 Too Many Requests** with:
-- Standard `ErrorResponse` payload.
-- `Retry-After: <seconds>` header indicating when the token bucket refills.
-- **Resilience Policy:** Configurable fallback (`app.rate-limit.fallback-to-in-memory: true/false`). In development or when Redis is temporarily offline, an in-memory token-bucket cache handles requests gracefully.
-
----
-
-## 12. Redis Caching & Invalidation Strategy
-
-- Entity listings (`/api/v1/lanes`, `/api/v1/transporters`) and completed assignment runs are cached using Spring Data Redis Cache (`RedisCacheManager`).
-- Cache TTL defaults to 10 minutes.
-- **Cache Invalidation:** Whenever new input data is submitted via `/api/v1/transporters/input` or imported via `/api/v1/import/csv`, `@CacheEvict(value = {"lanes", "transporters", "assignments"}, allEntries = true)` purges cached data to guarantee data freshness.
-
----
-
-## 13. CSV Format & Import Workflow
-
-The importer accepts CSV files formatted with a header row defining transporters:
+### Verified Sample Dataset
 
 ```csv
 Trade Lane,T1,T2,T3,T4,T5,T6,T7
 Lane 1,20835,48844,39020,14400,11601,35095,26070
 Lane 2,10512,31326,20648,44514,19760,12494,41098
 Lane 3,22105,18640,31438,14316,40870,17808,20932
-...
+Lane 4,42481,45828,36447,10678,20635,36210,16897
+Lane 5,19862,18297,12789,13032,26421,39444,27938
+Lane 6,13567,45810,49985,46024,28809,29948,43517
+Lane 7,10015,49573,35285,42342,27815,17320,25881
+Lane 8,17886,45122,10281,35742,17024,10492,46136
+Lane 9,43996,31856,40092,48921,44691,37864,31286
 ```
 
-**Validation & Ingestion Rules:**
-- Header row must contain `Trade Lane` followed by distinct transporter names. Duplicate transporter columns are rejected.
-- Empty rows and leading/trailing whitespace are sanitized automatically.
-- Quote amounts must be strictly positive numeric values. Non-numeric or negative entries trigger atomic rollback.
-- Imports execute within a single database transaction. If any row is corrupt, the entire import rolls back.
-- Idempotent upsert: existing lane IDs and transporter IDs are updated without duplicate key collisions.
+### Parsing & Validation Rules
+
+1. **Header Validation:** Requires at least 2 columns. Detects and rejects duplicate or empty transporter column names.
+2. **Lane Identification:** Automatically extracts `origin` and `destination` if the lane name contains standard separators (`Mumbai -> Delhi` or `Mumbai - Delhi`). If unnamed, sets origin and destination to the lane identifier.
+3. **Numeric Quotes:** Every quote must be a positive decimal number (`quote > 0`). Non-numeric values (e.g., `"N/A"`, `"-500"`) trigger validation errors.
+4. **Strict vs. Non-Strict Mode:**
+   - `strictMode=true` (Default): Any missing quote cell fails the entire upload with an explicit line-by-line validation report.
+   - `strictMode=false`: Empty quote cells are treated as non-participating transporters on that specific lane (sparse quote matrix) and recorded as warnings.
+5. **Transactional Upsert:** CSV import runs in a single `@Transactional` boundary. If any validation rule fails, **zero records are persisted**. If valid, existing lanes and transporters are updated idempotently by external ID, and quotes are refreshed.
 
 ---
 
-## 14. Local Development Setup
+## API Reference & Endpoint Table
 
-### Prerequisites
-- Java 21 (OpenJDK 21)
-- Maven 3.9+ (or use included `./mvnw`)
-- Redis (optional for local profile, required for prod profile)
-- PostgreSQL (optional for local profile; H2 in-memory mode is active by default)
+All application endpoints are versioned under `/api/v1`.
 
-### Quick Start
-
-1. **Clone repository:**
-   ```bash
-   git clone <repo-url>
-   cd FreightFox
-   ```
-
-2. **Verify Java 21:**
-   ```bash
-   java -version
-   ./mvnw -version
-   ```
-
-3. **Run Application locally:**
-   ```bash
-   ./mvnw spring-boot:run
-   ```
-   The backend starts at `http://localhost:8080`.
-
-4. **Verify Health:**
-   ```bash
-   curl http://localhost:8080/api/v1/health
-   ```
-
-5. **Access Swagger UI:**
-   Navigate to `http://localhost:8080/swagger-ui/index.html`.
+| Method | Endpoint | Description | Auth / Role Required | Rate Limit Tier |
+|---|---|---|---|---|
+| `GET` | `/api/v1/health` | Service health, database, and Redis connectivity status | Public | None |
+| `POST` | `/api/v1/auth/register` | Register a new user account with password policy checks | Public | 5 / hour |
+| `POST` | `/api/v1/auth/login` | Authenticate credentials and receive a signed JWT token | Public | 5 / minute |
+| `GET` | `/api/v1/auth/me` | Retrieve profile of the currently authenticated user | Bearer JWT (`USER`, `ADMIN`) | 120 / minute |
+| `POST` | `/api/v1/import/csv` | Upload and persist trade lanes, transporters, and quotes | Bearer JWT (`ADMIN`) | 5 / minute |
+| `POST` | `/api/v1/transporters/input` | Ingest lanes and quotes via structured JSON payload | Bearer JWT (`ADMIN`) | 120 / minute |
+| `POST` | `/api/v1/transporters/assignment` | Execute the transporter assignment optimization run | Bearer JWT (`USER`, `ADMIN`) | 20 / minute |
+| `GET` | `/api/v1/assignments` | Retrieve paginated list of historical optimization runs | Bearer JWT (`USER`, `ADMIN`) | 120 / minute |
+| `GET` | `/api/v1/assignments/{id}` | Retrieve details and lane allocations of a specific run | Bearer JWT (`USER`, `ADMIN`) | 120 / minute |
+| `GET` | `/api/v1/lanes` | List trade lanes with pagination and sorting | Bearer JWT (`USER`, `ADMIN`) | 120 / minute |
+| `GET` | `/api/v1/lanes/{id}` | Retrieve specific lane details by internal ID | Bearer JWT (`USER`, `ADMIN`) | 120 / minute |
+| `GET` | `/api/v1/transporters` | List transporters with pagination and sorting | Bearer JWT (`USER`, `ADMIN`) | 120 / minute |
+| `GET` | `/api/v1/transporters/{id}` | Retrieve specific transporter details by internal ID | Bearer JWT (`USER`, `ADMIN`) | 120 / minute |
+| `GET` | `/swagger-ui/index.html` | Interactive Swagger UI API documentation | Public | None |
+| `GET` | `/v3/api-docs` | OpenAPI 3.0 JSON specification | Public | None |
+| `GET` | `/actuator/health` | Spring Boot Actuator liveness and readiness probe | Public | None |
 
 ---
 
-## 15. Environment Variables Reference
+## Example cURL API Requests
 
-| Variable | Default Value | Description |
-|---|---|---|
-| `PORT` | `8080` | Port on which the Spring Boot server listens |
-| `SPRING_PROFILES_ACTIVE` | `local` | Spring active profile (`local`, `prod`, `test`) |
-| `DATABASE_URL` | `jdbc:h2:mem:freightfox` | PostgreSQL URI or JDBC connection string |
-| `REDIS_HOST` | `localhost` | Redis host for distributed rate limiting & cache |
-| `REDIS_PORT` | `6379` | Redis port |
-| `REDIS_PASSWORD` | *(empty)* | Redis authentication password |
-| `JWT_SECRET` | *(256-bit default)* | HMAC-SHA256 signing secret key |
-| `JWT_ACCESS_TOKEN_TTL` | `86400` | JWT expiration time in seconds (24h) |
-| `BOOTSTRAP_ADMIN_USERNAME` | `admin` | Initial administrator username |
-| `BOOTSTRAP_ADMIN_PASSWORD` | `Admin@FreightFox2026!` | Initial administrator password |
-| `RATE_LIMIT_ENABLED` | `true` | Enables distributed token-bucket rate limiting |
-| `RATE_LIMIT_FALLBACK_IN_MEMORY` | `true` | Falls back to in-memory buckets if Redis is down |
+Replace `<API_BASE_URL>` with `http://localhost:8080` for local testing or `https://freightfox-transporter-assignment-production.up.railway.app` for production.
 
----
-
-## 16. Docker & Containerization
-
-### Docker Compose (Full Stack)
-
-To run the complete production stack (Backend + PostgreSQL 16 + Redis 7):
+### 1. Health Check (Public)
 
 ```bash
-docker-compose up --build
+curl -s -X GET "<API_BASE_URL>/api/v1/health" | jq .
 ```
 
-Services started:
-- `freightfox-backend`: Port 8080
-- `freightfox-postgres`: Port 5432
-- `freightfox-redis`: Port 6379
-
----
-
-## 17. Automated Testing & Benchmark Results
-
-Run the full automated test suite using Maven Wrapper:
-
-```bash
-./mvnw clean test
-```
-
-### Verified Test Results (32/32 Passing)
-
-- `ExactSubsetsTransporterOptimizerTest`: **8 tests**
-  - Optimization of the 9-lane hiring CSV dataset for $K=3$ (Cost: ₹134,876.00, Transporters: T1, T4, T6).
-  - Optimization for $K=1$ (Cost: ₹201,259.00, Transporter: T1).
-  - Sparse quotes infeasibility detection when $K$ is insufficient to cover all lanes.
-  - Boundary case: 1 lane, 1 transporter.
-  - Boundary case: $K$ exceeds available transporter count.
-  - Missing quote infeasibility detection.
-  - Deterministic tie-breaking across equal quotes.
-  - 30 randomized problem instances verified against brute force.
-- `CsvParserServiceTest`: **6 tests**
-  - Parsing the actual `transporter_assignment_data.csv` (9 lanes, 7 transporters, 63 quotes).
-  - Header validation and duplicate transporter column detection.
-  - Duplicate lane row detection.
-  - Negative and non-numeric quote validation.
-  - Blank row sanitization.
-  - Empty CSV rejection.
-- `PasswordValidatorTest`: **9 tests**
-  - Complexity policy verification (uppercase, lowercase, digits, symbols).
-  - Common password denylist filtering.
-- `AuthControllerTest`: **3 tests**
-  - User registration, login, JWT token issuance, and authenticated `/me` retrieval.
-  - Rejection of weak passwords (HTTP 400).
-  - Bad credentials authentication failure (HTTP 401).
-- `AssignmentControllerTest`: **3 tests**
-  - Full lifecycle: submit input &rarr; compute optimization &rarr; inspect run by ID.
-  - Role-based security: ordinary user forbidden from `/transporters/input` (HTTP 403).
-  - Semantically infeasible assignment request rejection (HTTP 422).
-  - Pagination and sorting verification on trade lanes.
-- `CsvImportIntegrationTest`: **1 test**
-  - Multipart upload of `transporter_assignment_data.csv` &rarr; verified 63 quotes imported &rarr; solved $K=3$ optimization to ₹134,876.00.
-- `RateLimitIntegrationTest`: **1 test**
-  - Token-bucket quota exhaustion &rarr; verified HTTP 429 response with `Retry-After` header.
-- `HealthControllerTest`: **1 test**
-  - Diagnostic health status verification.
-
----
-
-## 18. Railway Deployment Guide
-
-This repository is pre-configured for one-click deployment on **Railway**.
-
-### Step 1: Create a Railway Project
-1. Log in to [Railway](https://railway.app/).
-2. Click **New Project** &rarr; **Provision PostgreSQL**.
-3. In the same project, click **New** &rarr; **Database** &rarr; **Add Redis**.
-
-### Step 2: Deploy Spring Boot Application
-1. Click **New** &rarr; **GitHub Repo** and select this repository.
-2. In the deployed service settings, link the PostgreSQL and Redis services.
-3. Railway automatically populates `DATABASE_URL` (converted by `DataSourceConfig.java`) and `PORT`.
-4. Configure the following environment variables in the Railway dashboard:
-   - `SPRING_PROFILES_ACTIVE`: `prod`
-   - `REDIS_HOST`: `${{Redis.REDISHOST}}`
-   - `REDIS_PORT`: `${{Redis.REDISPORT}}`
-   - `REDIS_PASSWORD`: `${{Redis.REDISPASSWORD}}`
-   - `JWT_SECRET`: `<secure-random-256-bit-key>`
-   - `BOOTSTRAP_ADMIN_PASSWORD`: `<your-secure-admin-password>`
-5. Railway detects `Dockerfile` and builds the production container automatically.
-6. Once deployed, verify live health at `https://<your-app-domain>.up.railway.app/api/v1/health`.
-
----
-
-## 19. Swagger / OpenAPI Documentation
-
-Once the application is running, open your browser to:
-
-```
-http://localhost:8080/swagger-ui/index.html
-```
-
-To test protected endpoints:
-1. Call `POST /api/v1/auth/login` with your credentials.
-2. Copy the returned `token`.
-3. Click the **Authorize** button at the top right of the Swagger UI.
-4. Enter `Bearer <token>` and click **Authorize**.
-
----
-
-## 20. Example API Requests & Responses
-
-### 1. Ingest Input Data (Admin Only)
-
-**Request:**
-`POST /api/v1/transporters/input`  
-Headers: `Authorization: Bearer <admin-token>`, `Content-Type: application/json`
-
+**Response (HTTP 200):**
 ```json
 {
-  "lanes": [
-    {"id": 1, "origin": "Mumbai", "destination": "Delhi"},
-    {"id": 2, "origin": "Delhi", "destination": "Bangalore"}
-  ],
-  "transporters": [
-    {
-      "id": 1,
-      "name": "Transporter T1",
-      "laneQuotes": [
-        {"laneId": 1, "quote": 5000},
-        {"laneId": 2, "quote": 6000}
-      ]
-    },
-    {
-      "id": 2,
-      "name": "Transporter T2",
-      "laneQuotes": [
-        {"laneId": 1, "quote": 5500},
-        {"laneId": 2, "quote": 4500}
-      ]
-    }
-  ]
+  "status": "UP",
+  "version": "1.0.0",
+  "uptimeMs": 42560,
+  "timestamp": "2026-10-13T10:15:35.123Z",
+  "dependencies": {
+    "database": "UP",
+    "redis": "UP"
+  }
 }
+```
+
+### 2. User Registration (Public)
+
+```bash
+curl -s -X POST "<API_BASE_URL>/api/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "logistics_user",
+    "email": "user@freightfox.com",
+    "password": "SecurePassword2026!"
+  }' | jq .
+```
+
+### 3. User Login (Public)
+
+```bash
+curl -s -X POST "<API_BASE_URL>/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "logistics_user",
+    "password": "SecurePassword2026!"
+  }' | jq .
+```
+
+**Response (HTTP 200):**
+```json
+{
+  "token": "<JWT_TOKEN>",
+  "tokenType": "Bearer",
+  "expiresInSeconds": 86400,
+  "user": {
+    "id": 2,
+    "username": "logistics_user",
+    "email": "user@freightfox.com",
+    "role": "ROLE_USER"
+  }
+}
+```
+
+### 4. Get Current User Profile (Authenticated)
+
+```bash
+curl -s -X GET "<API_BASE_URL>/api/v1/auth/me" \
+  -H "Authorization: Bearer <JWT_TOKEN>" | jq .
+```
+
+### 5. CSV Dataset Import (Administrator Only)
+
+```bash
+curl -s -X POST "<API_BASE_URL>/api/v1/import/csv?strictMode=true" \
+  -H "Authorization: Bearer <ADMIN_JWT_TOKEN>" \
+  -F "file=@transporter_assignment_data.csv" | jq .
+```
+
+**Response (HTTP 200):**
+```json
+{
+  "status": "SUCCESS",
+  "lanesCount": 9,
+  "transportersCount": 7,
+  "quotesCount": 63,
+  "errors": [],
+  "warnings": [],
+  "message": "CSV imported successfully: 9 lanes, 7 transporters, 63 quotes persisted."
+}
+```
+
+### 6. Query Lanes & Transporters (Authenticated)
+
+```bash
+# List lanes (paginated)
+curl -s -X GET "<API_BASE_URL>/api/v1/lanes?page=0&size=10" \
+  -H "Authorization: Bearer <JWT_TOKEN>" | jq .
+
+# List transporters (paginated)
+curl -s -X GET "<API_BASE_URL>/api/v1/transporters?page=0&size=10" \
+  -H "Authorization: Bearer <JWT_TOKEN>" | jq .
+```
+
+### 7. Run Transporter Assignment Optimization (Authenticated)
+
+```bash
+curl -s -X POST "<API_BASE_URL>/api/v1/transporters/assignment" \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "maxTransporters": 3,
+    "objective": "LEXICOGRAPHIC_MAX_TRANSPORTERS_MIN_COST"
+  }' | jq .
 ```
 
 **Response (HTTP 200):**
 ```json
 {
   "status": "success",
-  "message": "Input data saved successfully."
-}
-```
-
-### 2. Request Optimized Assignment
-
-**Request:**
-`POST /api/v1/transporters/assignment`  
-Headers: `Authorization: Bearer <user-token>`, `Content-Type: application/json`
-
-```json
-{
-  "maxTransporters": 3
-}
-```
-
-**Response (HTTP 200 on 9-Lane CSV dataset):**
-```json
-{
-  "status": "success",
   "assignmentRunId": 1,
   "totalCost": 134876.00,
-  "selectedTransporters": ["T1", "T4", "T6"],
+  "selectedTransporters": ["T1", "T4", "T5"],
   "selectedTransporterCount": 3,
   "lanesCovered": 9,
   "optimizationObjective": "LEXICOGRAPHIC_MAX_TRANSPORTERS_MIN_COST",
   "assignments": [
     {
       "laneId": "Lane 1",
-      "transporterId": "T4",
-      "quoteAmount": 14400.00,
+      "transporterId": "T5",
+      "quoteAmount": 11601.00,
       "origin": "Lane 1",
       "destination": "Lane 1",
-      "transporterName": "T4"
+      "transporterName": "T5"
     },
     {
       "laneId": "Lane 2",
@@ -670,50 +460,493 @@ Headers: `Authorization: Bearer <user-token>`, `Content-Type: application/json`
     },
     {
       "laneId": "Lane 8",
-      "transporterId": "T6",
-      "quoteAmount": 10492.00,
+      "transporterId": "T5",
+      "quoteAmount": 17024.00,
       "origin": "Lane 8",
       "destination": "Lane 8",
-      "transporterName": "T6"
+      "transporterName": "T5"
     },
     {
       "laneId": "Lane 9",
-      "transporterId": "T6",
-      "quoteAmount": 37864.00,
+      "transporterId": "T5",
+      "quoteAmount": 44691.00,
       "origin": "Lane 9",
       "destination": "Lane 9",
-      "transporterName": "T6"
+      "transporterName": "T5"
     }
   ]
 }
 ```
 
----
+### 8. List Historical Assignment Runs (Authenticated)
 
-## 21. Security & Production Hardening
-
-- **Deny-by-default access model:** All non-whitelisted endpoints require authentication.
-- **SQL Injection Prevention:** Parameterized Spring Data JPA repositories throughout.
-- **Payload Limits:** Maximum multipart CSV file upload is capped at 5MB.
-- **MDC Correlation IDs:** Every HTTP request is tagged with a unique `X-Trace-Id` correlation token.
-- **Production DDL Policy:** `spring.jpa.hibernate.ddl-auto=validate` in production; Flyway owns all DDL execution.
-- **Non-Root Container:** Docker container executes under a dedicated unprivileged user (`appuser`).
+```bash
+curl -s -X GET "<API_BASE_URL>/api/v1/assignments?page=0&size=10" \
+  -H "Authorization: Bearer <JWT_TOKEN>" | jq .
+```
 
 ---
 
-## 22. Loom Demonstration Checklist
+## Authentication & Authorization
 
-When recording the hiring demonstration on Loom, follow this walkthrough:
+### Stateless JWT Bearer Flow
 
-- [ ] **1. Introduction & Overview:** State purpose: FreightFox Transporter Assignment Platform.
-- [ ] **2. Technology Stack & Architecture:** Highlight Java 21, Spring Boot 3.3, Flyway, PostgreSQL, Redis, Bucket4j.
-- [ ] **3. Swagger UI Walkthrough:** Navigate to `/swagger-ui/index.html`.
-- [ ] **4. Administrator Authentication:** Authenticate using bootstrap credentials and inspect token.
-- [ ] **5. CSV Dataset Import:** Upload `transporter_assignment_data.csv` to `POST /api/v1/import/csv` &rarr; show 9 lanes, 7 transporters, 63 quotes imported.
-- [ ] **6. Optimization Calculation:** Call `POST /api/v1/transporters/assignment` with `maxTransporters: 3`.
-- [ ] **7. Verify Cost & Assignments:** Show exact total cost of **₹134,876.00**, selected transporters **[T1, T4, T6]**, and full 9-lane coverage.
-- [ ] **8. Role-Based Access Control:** Demonstrate standard user forbidden from accessing administrative endpoints (HTTP 403).
-- [ ] **9. Validation & Infeasibility:** Submit an invalid request &rarr; demonstrate structured HTTP 400 and HTTP 422 responses.
-- [ ] **10. Rate Limiting in Action:** Trigger multiple rapid requests to show HTTP 429 and `Retry-After`.
-- [ ] **11. Test Suite Results:** Show terminal output of `./mvnw clean test` passing all 32 tests.
-- [ ] **12. Deployment Verification:** Show Railway deployment and live `/api/v1/health` response.
+1. **Authentication:** Clients provide username and password to `/api/v1/auth/login`.
+2. **Token Generation:** Upon successful authentication, the server signs an HMAC-SHA token containing `sub` (username), `roles` (e.g., `["ROLE_USER"]`), issue timestamp, and expiration timestamp.
+3. **Token Verification:** On subsequent requests, `JwtAuthenticationFilter` intercepts the `Authorization: Bearer <token>` header, verifies the signature against the configured `JWT_SECRET`, loads the `UserDetails`, and injects an authenticated token into Spring's `SecurityContext`.
+
+### Password Policy
+
+The `PasswordValidator` enforces the following policy on user registration:
+- Length between 12 and 128 characters
+- At least one uppercase letter (`A-Z`)
+- At least one lowercase letter (`a-z`)
+- At least one numeric digit (`0-9`)
+- At least one special symbol (`!@#$%^&*...`)
+- Denylist filter rejecting commonly guessed passwords
+
+### Bootstrap Administrator Provisioning
+
+The application can initialize an initial administrator account on startup via `AuthService`:
+- Controlled by `BOOTSTRAP_ADMIN_ENABLED` (default: `true`).
+- **Account Preservation Guarantee:** On startup, `AuthService` executes `userRepository.existsByUsername(bootstrapAdminUsername)`. If an account with that username already exists, **no changes are made**. The existing account's credentials, password hash, and assigned privileges are strictly preserved.
+- **Production Guard:** If creating a new bootstrap admin account in the `prod` profile, `BOOTSTRAP_ADMIN_PASSWORD` must be provided explicitly and cannot match known insecure fallback defaults.
+
+---
+
+## Database Design & Schema
+
+Database schema changes are versioned and applied automatically via Flyway (`db/migration/V1__init_schema.sql`).
+
+```mermaid
+erDiagram
+    USERS {
+        bigint id PK
+        varchar username UK
+        varchar email UK
+        varchar password_hash
+        varchar role
+        boolean enabled
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    LANES {
+        bigint id PK
+        varchar external_lane_id UK
+        varchar origin
+        varchar destination
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    TRANSPORTERS {
+        bigint id PK
+        varchar external_transporter_id UK
+        varchar name
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    TRANSPORTER_QUOTES {
+        bigint id PK
+        bigint lane_id FK
+        bigint transporter_id FK
+        numeric quote_amount
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    ASSIGNMENT_RUNS {
+        bigint id PK
+        int requested_max_transporters
+        int selected_transporter_count
+        numeric total_cost
+        varchar status
+        varchar optimization_objective
+        int lanes_covered
+        varchar created_by
+        timestamp created_at
+    }
+
+    LANE_ASSIGNMENTS {
+        bigint id PK
+        bigint assignment_run_id FK
+        bigint lane_id FK
+        bigint transporter_id FK
+        numeric quote_amount
+    }
+
+    LANES ||--o{ TRANSPORTER_QUOTES : "has quotes"
+    TRANSPORTERS ||--o{ TRANSPORTER_QUOTES : "submits"
+    ASSIGNMENT_RUNS ||--o{ LANE_ASSIGNMENTS : "contains"
+    LANES ||--o{ LANE_ASSIGNMENTS : "assigned in"
+    TRANSPORTERS ||--o{ LANE_ASSIGNMENTS : "fulfills"
+```
+
+### Table Summary & Constraints
+
+- **`users`:** Stores system credentials. Unique constraints on `username` and `email`.
+- **`lanes`:** Normalized trade lanes. Unique constraint on `external_lane_id`. Indexed for search.
+- **`transporters`:** Registered carriers. Unique constraint on `external_transporter_id`.
+- **`transporter_quotes`:** Quote matrix. Foreign keys to `lanes` and `transporters` with `ON DELETE CASCADE`. Unique constraint on `(lane_id, transporter_id)` and check constraint `quote_amount > 0`.
+- **`assignment_runs`:** Optimization history logs. Stores parameters, selected count, total cost, and creator. Indexed on `created_at DESC`.
+- **`lane_assignments`:** Individual lane allocations belonging to a run. Foreign keys to `assignment_runs` (`ON DELETE CASCADE`), `lanes` (`ON DELETE RESTRICT`), and `transporters` (`ON DELETE RESTRICT`).
+
+---
+
+## Redis Caching & Distributed Rate Limiting
+
+### Distributed Rate Limiting (Bucket4j + Lettuce)
+
+All inbound API traffic passes through `RateLimitFilter`:
+- **Client Key:** Authenticated users are tracked by `user:<username>`. Unauthenticated clients are tracked by IP extracted from `X-Forwarded-For` or the socket remote address (`ip:<address>`).
+- **Distributed State:** Buckets are stored in Redis using Lettuce compare-and-swap (`LettuceBasedProxyManager`), ensuring quotas are maintained across horizontally scaled backend instances.
+- **Quota Tiers:**
+  - Login: 5 requests / 60 seconds
+  - Registration: 5 requests / 3600 seconds
+  - Optimization: 20 requests / 60 seconds
+  - CSV Import: 5 requests / 60 seconds
+  - General queries: 120 requests / 60 seconds
+- **Fallback Protection:** If Redis is unreachable, `RateLimitService` automatically falls back to thread-safe local in-memory buckets (`ConcurrentMapCacheManager`), allowing the service to remain functional without dropping legitimate traffic.
+
+### Caching Strategy
+
+- Caches trade lanes (`lanes`), transporters (`transporters`), and historical assignments (`assignments`) with a 10-minute default time-to-live (`TTL`).
+- When new data is ingested via CSV upload (`/api/v1/import/csv`) or JSON input (`/api/v1/transporters/input`), `@CacheEvict(value = {"lanes", "transporters", "assignments"}, allEntries = true)` purges cached query results atomically.
+
+---
+
+## Local Setup & Installation
+
+### Prerequisites
+
+- **Java Development Kit:** Java 21 LTS (Oracle, Eclipse Temurin, or OpenJDK)
+- **Maven:** 3.9+ (or use the included `./mvnw` wrapper)
+- **Git**
+- **Docker & Docker Compose** (Optional: for local PostgreSQL and Redis containers)
+
+### Step-by-Step Installation
+
+#### 1. Clone the Repository
+
+```bash
+git clone https://github.com/harshsingh910/freightfox-transporter-assignment.git
+cd freightfox-transporter-assignment
+```
+
+#### 2. Verify Java 21
+
+```bash
+java -version
+# Ensure output indicates OpenJDK 21 or Java 21
+```
+
+If your default system Java points to an older version (e.g., Java 17 on macOS), set `JAVA_HOME` explicitly:
+```bash
+# macOS with Homebrew:
+export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+```
+
+#### 3. Run Automated Tests
+
+```bash
+./mvnw clean test
+```
+All 60 tests should pass cleanly using the default in-memory H2 database.
+
+#### 4. Package the Application
+
+```bash
+./mvnw clean package
+```
+Generates the executable JAR: `target/transporter-assignment-platform-1.0.0.jar`.
+
+#### 5. Launch the Application Locally
+
+```bash
+./mvnw spring-boot:run
+```
+
+By default, the application starts with the `local` profile on port `8080`, using an in-memory H2 database with PostgreSQL compatibility mode and in-memory rate-limiting fallback.
+
+#### 6. Access Local Swagger UI
+
+Open your browser to:
+[http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
+
+---
+
+## Environment Variables & Secure Configuration
+
+The application is configured via `src/main/resources/application.yml` and `src/main/resources/application-prod.yml`. A safe template is provided in `.env.example`.
+
+### Configuration Variables Reference
+
+| Variable | Description | Default (Local) | Production Requirement |
+|---|---|---|---|
+| `SPRING_PROFILES_ACTIVE` | Active Spring profile | `local` | **Required (`prod`)** |
+| `PORT` | HTTP server port | `8080` | Assigned automatically by Railway |
+| `DATABASE_URL` | Cloud PostgreSQL URI (Railway/Neon) | `jdbc:h2:mem:freightfox;...` | **Required in Production** |
+| `JWT_SECRET` | 256-bit+ HMAC signing secret | Safe local testing key | **Required in Production** (min 32 bytes) |
+| `JWT_ISSUER` | JWT token issuer claim | `freightfox-platform` | Optional |
+| `JWT_ACCESS_TOKEN_TTL` | JWT validity duration (seconds) | `86400` (24h) | Optional |
+| `BOOTSTRAP_ADMIN_ENABLED`| Initialize admin on startup | `true` | Optional (`true` / `false`) |
+| `BOOTSTRAP_ADMIN_USERNAME`| Username of bootstrap admin | `admin` | Optional |
+| `BOOTSTRAP_ADMIN_EMAIL` | Email of bootstrap admin | `admin@freightfox.com` | Optional |
+| `BOOTSTRAP_ADMIN_PASSWORD`| Password of bootstrap admin | Tested local default | **Required if admin does not exist** |
+| `REDIS_HOST` | Redis server hostname | `localhost` | **Required in Production** (Railway service) |
+| `REDIS_PORT` | Redis server port | `6379` | **Required in Production** |
+| `REDIS_PASSWORD` | Redis server authentication password | None | Set if Redis requires auth |
+| `RATE_LIMIT_ENABLED` | Enable rate limiting filter | `true` | Recommended `true` |
+| `RATE_LIMIT_FALLBACK_IN_MEMORY` | Fall back to RAM if Redis is down | `true` (local) / `false` (prod) | Optional |
+| `OPTIMIZER_OBJECTIVE` | Default optimization strategy | `LEXICOGRAPHIC_MAX_TRANSPORTERS_MIN_COST` | Optional |
+| `CORS_ALLOWED_ORIGINS` | Permitted browser origins | `*` | Configure domain in production |
+
+### Production Security Rules
+
+1. **Mandatory Explicit Secrets:** When running with `SPRING_PROFILES_ACTIVE=prod`, `JWT_SECRET` must be set explicitly. The application will fail startup with an informative error if it is missing, shorter than 32 bytes (256 bits), or matches the public default key.
+2. **Generating a Secure Secret:**
+   ```bash
+   openssl rand -hex 32
+   ```
+3. **Rotating the JWT Secret:** Updating `JWT_SECRET` immediately invalidates previously issued tokens. It does **not** alter or damage database records, trade lanes, quotes, or historical assignment runs.
+4. **Bootstrap Admin Idempotency:** The bootstrap admin routine checks if the admin user exists in the database. If present, it leaves existing passwords and roles intact.
+
+---
+
+## Automated Testing & Regression Coverage
+
+The repository maintains an automated test suite verifying every component from algorithms to security filters.
+
+### Running Test Suites
+
+```bash
+# Run unit, integration, and security tests
+./mvnw clean test
+
+# Run build verification and generate executable JAR
+./mvnw clean package
+```
+
+### Verified Test Scope (60 Tests Total)
+
+- **Exact Optimization Tests (`ExactSubsetsTransporterOptimizerTest` - 18 tests):**
+  - Verifies optimality against the official 9-lane, 7-transporter dataset.
+  - Verifies behavior for $K = 1, 2, 3, 4, 7$.
+  - Tests infeasibility detection when $K$ is too small for full lane coverage.
+  - Tests handling of missing quotes and empty inputs.
+  - Validates combinatorial threshold enforcement ($> 50,000$ combinations).
+  - Validates lexicographical tie-breaking rules.
+- **Security & Secret Validation (`SecretConfigurationRegressionTest` - 11 tests):**
+  - Rejects missing, blank, weak, and public fallback JWT secrets in production.
+  - Rejects public bootstrap admin passwords during account creation in production.
+  - Verifies existing admin account preservation without password resets.
+  - Verifies non-production local profiles continue to permit safe defaults.
+- **Authentication & Password Tests (`AuthControllerTest`, `PasswordValidatorTest` - 13 tests):**
+  - Verifies user registration, login, token issuance, and password complexity requirements.
+  - Rejects passwords lacking uppercase, lowercase, numbers, or symbols.
+- **CSV Parser & Import Integration (`CsvParserServiceTest`, `CsvImportIntegrationTest` - 7 tests):**
+  - Validates RFC 4180 parsing, header validation, duplicate lane detection, non-numeric quote handling, and transactional database persistence.
+- **Distributed Rate Limiting (`RateLimitIntegrationTest` - 1 test):**
+  - Verifies Bucket4j token consumption and HTTP 429 response formatting with `Retry-After` headers.
+- **Infrastructure & Health Probes (`HealthControllerTest`, `DataSourceConfigTest`, `RedisConfigTest` - 10 tests):**
+  - Verifies dynamic Railway URL transformation, database health probes, and Redis connection diagnostics.
+
+---
+
+## Docker & Containerization
+
+A multi-stage `Dockerfile` packages the application into a secure, minimal container running under an unprivileged user.
+
+### Building the Docker Image
+
+```bash
+docker build -t freightfox-platform:latest .
+```
+
+### Running the Container
+
+```bash
+docker run -d -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=prod \
+  -e DATABASE_URL="postgresql://user:pass@host:5432/dbname?sslmode=require" \
+  -e JWT_SECRET="your_secure_256_bit_jwt_secret_hex_here_min_32_bytes" \
+  --name freightfox-backend \
+  freightfox-platform:latest
+```
+
+### Multi-Container Local Stack (`docker-compose.yml`)
+
+To run the application alongside local PostgreSQL and Redis containers:
+
+```bash
+docker compose up -d
+```
+This initializes:
+- `freightfox-postgres` on port `5432`
+- `freightfox-redis` on port `6379`
+- `freightfox-backend` on port `8080`
+
+---
+
+## Production Deployment on Railway
+
+The live deployment on Railway uses the following architecture:
+1. **Application Service:** Runs the Spring Boot Docker container built directly from the GitHub repository (`Dockerfile` via `railway.json`).
+2. **Database:** Hosted on Neon PostgreSQL with connection pooling and SSL enabled.
+3. **Cache & Rate Limiting:** Redis service hosted on Railway, linked to the backend via `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`.
+
+### Railway Configuration (`railway.json`)
+
+```json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "java -Dserver.port=${PORT:-8080} -XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -jar app.jar",
+    "healthcheckPath": "/api/v1/health",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}
+```
+
+### Deployment Verification
+
+Once deployed on Railway, verify application health via:
+```bash
+curl -s https://freightfox-transporter-assignment-production.up.railway.app/api/v1/health | jq .
+```
+Verify that both `"database": "UP"` and `"redis": "UP"` are reported.
+
+---
+
+## Example End-to-End Workflow
+
+The following complete workflow illustrates how to operate the platform from start to finish:
+
+1. **Verify Backend Health:**
+   ```bash
+   curl -s "https://freightfox-transporter-assignment-production.up.railway.app/api/v1/health" | jq .
+   ```
+2. **Log in as Administrator:**
+   ```bash
+   ADMIN_TOKEN=$(curl -s -X POST "https://freightfox-transporter-assignment-production.up.railway.app/api/v1/auth/login" \
+     -H "Content-Type: application/json" \
+     -d '{"username":"<ADMIN_USERNAME>","password":"<ADMIN_PASSWORD>"}' | jq -r .token)
+   ```
+3. **Upload the Procurement Dataset:**
+   ```bash
+   curl -s -X POST "https://freightfox-transporter-assignment-production.up.railway.app/api/v1/import/csv?strictMode=true" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" \
+     -F "file=@transporter_assignment_data.csv" | jq .
+   ```
+4. **Register a Standard Operator Account:**
+   ```bash
+   curl -s -X POST "https://freightfox-transporter-assignment-production.up.railway.app/api/v1/auth/register" \
+     -H "Content-Type: application/json" \
+     -d '{"username":"operator_1","email":"operator1@freightfox.com","password":"OperatorStrongPassword2026!"}' | jq .
+   ```
+5. **Log in as the Operator:**
+   ```bash
+   OPERATOR_TOKEN=$(curl -s -X POST "https://freightfox-transporter-assignment-production.up.railway.app/api/v1/auth/login" \
+     -H "Content-Type: application/json" \
+     -d '{"username":"operator_1","password":"OperatorStrongPassword2026!"}' | jq -r .token)
+   ```
+6. **Execute an Optimization Run ($K = 3$):**
+   ```bash
+   curl -s -X POST "https://freightfox-transporter-assignment-production.up.railway.app/api/v1/transporters/assignment" \
+     -H "Authorization: Bearer $OPERATOR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"maxTransporters": 3, "objective": "LEXICOGRAPHIC_MAX_TRANSPORTERS_MIN_COST"}' | jq .
+   ```
+7. **Query Optimization History:**
+   ```bash
+   curl -s -X GET "https://freightfox-transporter-assignment-production.up.railway.app/api/v1/assignments?page=0&size=5" \
+     -H "Authorization: Bearer $OPERATOR_TOKEN" | jq .
+   ```
+
+---
+
+## Troubleshooting Guide
+
+### 1. Java Version Incompatibility
+- **Symptom:** Maven outputs `Fatal error compiling: error: release version 21 not supported` or similar compiler errors.
+- **Cause:** Active Java runtime is Java 17 or older.
+- **Fix:** Install Java 21 and export `JAVA_HOME` pointing to JDK 21 before building:
+  ```bash
+  export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+  ./mvnw clean test
+  ```
+
+### 2. Production Secret Startup Failure
+- **Symptom:** Startup fails with `Production JWT secret is missing or insecure`.
+- **Cause:** `SPRING_PROFILES_ACTIVE=prod` is active, but `JWT_SECRET` is unset, shorter than 32 characters, or using the test fallback key.
+- **Fix:** Generate a 256-bit key via `openssl rand -hex 32` and set it in your environment or Railway dashboard.
+
+### 3. PostgreSQL SSL / Driver Mismatch
+- **Symptom:** `Driver org.postgresql.Driver claims to not accept jdbcUrl, jdbc:h2:mem:...`
+- **Cause:** Production profile attempted to fall back to H2, or the URL prefix was improperly formed.
+- **Fix:** In production, ensure `DATABASE_URL` is configured. `DataSourceConfig` automatically normalizes `postgres://` into a valid `jdbc:postgresql://` URI and appends `sslmode=require` if missing.
+
+### 4. Redis Connection Offline
+- **Symptom:** Health check reports `"redis": "DOWN (using safe in-memory fallback)"`.
+- **Cause:** Redis server is unreachable, port is misconfigured, or password is missing.
+- **Fix:** Verify `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`. Note that application caching and rate limiting will continue safely using local in-memory fallbacks until Redis reconnects.
+
+### 5. HTTP 401 Unauthorized vs. HTTP 403 Forbidden
+- **401 Unauthorized:** Missing, expired, or malformed JWT token in `Authorization: Bearer <token>`.
+- **403 Forbidden:** The authenticated user has `ROLE_USER`, but the endpoint requires `ROLE_ADMIN` (e.g., CSV dataset upload or JSON input ingestion).
+
+### 6. HTTP 422 Unprocessable Entity (`INFEASIBLE_ASSIGNMENT`)
+- **Symptom:** `POST /api/v1/transporters/assignment` returns HTTP 422.
+- **Cause:** No combination of up to $K$ transporters can cover all registered lanes (e.g., requested $K = 1$, but no single transporter submitted quotes on all lanes).
+- **Fix:** Increase the $K$ parameter in `maxTransporters` or upload quote data with better coverage.
+
+### 7. HTTP 429 Too Many Requests
+- **Symptom:** Response contains HTTP 429 and header `Retry-After: <seconds>`.
+- **Cause:** Request rate exceeded the allowed bucket capacity for that operation.
+- **Fix:** Inspect the `Retry-After` header and wait before repeating the request.
+
+---
+
+## Security Hardening & Production Safeguards
+
+- **Principle of Least Privilege:** Deny-by-default endpoint authorization. Administrative dataset modifications (`/api/v1/import/csv`, `/api/v1/transporters/input`) are restricted to `ROLE_ADMIN`.
+- **BCrypt Password Hashing:** Passwords hashed using standard BCrypt with cost factor 12.
+- **Defensive Data Transfer Objects (DTOs):** JPA entities are never exposed directly to REST responses, eliminating JSON serialization leaks and Hibernate lazy proxy issues.
+- **Structured Error Obfuscation:** Database exception traces and internal stack traces are caught by `GlobalExceptionHandler` and masked. Responses return standardized `ErrorResponse` objects with a unique `traceId`.
+- **MDC Trace Context:** Every request is assigned a unique trace ID logged via SLF4J MDC, enabling correlation across log streams without exposing sensitive tokens.
+- **Unprivileged Container Execution:** Docker runtime executes under a dedicated non-root user (`appuser:appgroup`), mitigating container escape risks.
+
+---
+
+## Limitations & Scaling Considerations
+
+- **Combinatorial Growth:** The exact subset enumeration algorithm evaluates $\sum_{k=1}^K \binom{M}{k}$ candidate subsets. For $M = 7$ and $K = 3$, there are only 63 subsets. For large problems (e.g., $M = 100, K = 15$), combinatorial enumeration becomes computationally intractable.
+- **Configured Bounds:** The platform safeguards against CPU exhaustion via `maxCombinatorialSubsets` (capped at 50,000 subsets) and `maxRuntimeMillis` (capped at 30 seconds).
+- **Enterprise Scaling Path:** For large enterprise supply chains requiring hundreds of transporters and thousands of lanes, the exact combinatorial engine should be complemented with an Integer Linear Programming (ILP) solver such as Google OR-Tools or Apache Commons Math Simplex.
+
+---
+
+## Future Planned Improvements
+
+The following capabilities are identified as architectural enhancements for future releases:
+- [ ] **Mixed-Integer Linear Programming (MILP) Solver:** Plug in Google OR-Tools / OptaPlanner for high-dimensional carrier-lane problem spaces ($M > 50, K > 10$).
+- [ ] **Lane Capacity & Volume Constraints:** Support lane volume weighting and carrier contract minimum/maximum tonnage limits.
+- [ ] **Multi-Factor Authentication (MFA):** Add TOTP-based two-factor authentication for administrative accounts.
+- [ ] **Webhook Notifications:** Asynchronous event delivery via webhooks upon completion of long-running optimization jobs.
+- [ ] **Export Reports:** Direct download of assignment results in Excel (`.xlsx`) and PDF formats.
+
+---
+
+## License & Submission Note
+
+This project was developed by **Harsh Singh** as a technical assignment submission for **FreightFox** (*Transporter Assignment on Lanes Optimization Platform*).
+
+All rights reserved. Not intended for unauthorized distribution.
