@@ -21,5 +21,12 @@ spring:
     type: redis
 
 app:
+  jwt:
+    secret: ${JWT_SECRET:}
+  bootstrap-admin:
+    enabled: ${BOOTSTRAP_ADMIN_ENABLED:true}
+    username: ${BOOTSTRAP_ADMIN_USERNAME:admin}
+    email: ${BOOTSTRAP_ADMIN_EMAIL:admin@freightfox.com}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
   rate-limit:
     fallback-to-in-memory: ${RATE_LIMIT_FALLBACK_IN_MEMORY:false}
