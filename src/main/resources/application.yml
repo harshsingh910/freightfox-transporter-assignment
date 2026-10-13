@@ -1,0 +1,118 @@
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: freightfox-transporter-assignment-platform
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:freightfox;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      idle-timeout: 300000
+      connection-timeout: 20000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+  cache:
+    type: ${CACHE_TYPE:redis}
+    cache-names: lanes,transporters,assignments
+    redis:
+      time-to-live: 600000ms
+      cache-null-values: false
+  servlet:
+    multipart:
+      max-file-size: ${MAX_CSV_UPLOAD_BYTES:5MB}
+      max-request-size: ${MAX_CSV_UPLOAD_BYTES:5MB}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    issuer: ${JWT_ISSUER:freightfox-platform}
+    access-token-ttl-seconds: ${JWT_ACCESS_TOKEN_TTL:86400}
+  bootstrap-admin:
+    enabled: ${BOOTSTRAP_ADMIN_ENABLED:true}
+    username: ${BOOTSTRAP_ADMIN_USERNAME:admin}
+    email: ${BOOTSTRAP_ADMIN_EMAIL:admin@freightfox.com}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:Admin@FreightFox2026!}
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    fallback-to-in-memory: ${RATE_LIMIT_FALLBACK_IN_MEMORY:true}
+    login:
+      capacity: ${RATE_LIMIT_LOGIN:5}
+      refill-tokens: 5
+      duration-seconds: 60
+    register:
+      capacity: ${RATE_LIMIT_REGISTER:5}
+      refill-tokens: 5
+      duration-seconds: 3600
+    assignment:
+      capacity: ${RATE_LIMIT_ASSIGNMENT:20}
+      refill-tokens: 20
+      duration-seconds: 60
+    import:
+      capacity: ${RATE_LIMIT_IMPORT:5}
+      refill-tokens: 5
+      duration-seconds: 60
+    general:
+      capacity: ${RATE_LIMIT_GENERAL:120}
+      refill-tokens: 120
+      duration-seconds: 60
+  optimizer:
+    max-lanes: ${MAX_OPTIMIZATION_LANES:100}
+    max-transporters: ${MAX_OPTIMIZATION_TRANSPORTERS:50}
+    max-runtime-seconds: ${MAX_OPTIMIZATION_RUNTIME:30}
+    default-objective: ${OPTIMIZER_OBJECTIVE:LEXICOGRAPHIC_MAX_TRANSPORTERS_MIN_COST}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui/index.html
+    enabled: true
+    operationsSorter: method
+    tagsSorter: alpha
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true

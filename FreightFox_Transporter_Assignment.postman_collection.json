@@ -1,0 +1,272 @@
+{
+  "info": {
+    "name": "FreightFox Transporter Assignment Platform",
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "description": "Production REST API collection for FreightFox Transporter Assignment on Lanes platform including authentication, input ingestion, CSV import, exact optimization, and health checks.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Get Application Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "1. Login Admin (Bootstrap)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.token) {",
+                  "    pm.collectionVariables.set('token', jsonData.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrEmail\": \"admin\",\n  \"password\": \"Admin@FreightFox2026!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "2. Register New User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser_1\",\n  \"email\": \"testuser_1@freightfox.com\",\n  \"password\": \"FreightFox@2026Secure!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "3. Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transporter Operations",
+      "item": [
+        {
+          "name": "1. Submit Input Data (POST /api/v1/transporters/input)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lanes\": [\n    {\"id\": 1, \"origin\": \"Mumbai\", \"destination\": \"Delhi\"},\n    {\"id\": 2, \"origin\": \"Delhi\", \"destination\": \"Bangalore\"},\n    {\"id\": 3, \"origin\": \"Chennai\", \"destination\": \"Kolkata\"},\n    {\"id\": 4, \"origin\": \"Pune\", \"destination\": \"Hyderabad\"},\n    {\"id\": 5, \"origin\": \"Ahmedabad\", \"destination\": \"Jaipur\"}\n  ],\n  \"transporters\": [\n    {\n      \"id\": 1,\n      \"name\": \"Transporter T1\",\n      \"laneQuotes\": [\n        {\"laneId\": 1, \"quote\": 20835},\n        {\"laneId\": 2, \"quote\": 10512},\n        {\"laneId\": 3, \"quote\": 22105},\n        {\"laneId\": 4, \"quote\": 42481},\n        {\"laneId\": 5, \"quote\": 19862}\n      ]\n    },\n    {\n      \"id\": 2,\n      \"name\": \"Transporter T2\",\n      \"laneQuotes\": [\n        {\"laneId\": 1, \"quote\": 48844},\n        {\"laneId\": 2, \"quote\": 31326},\n        {\"laneId\": 3, \"quote\": 18640},\n        {\"laneId\": 4, \"quote\": 45828},\n        {\"laneId\": 5, \"quote\": 18297}\n      ]\n    },\n    {\n      \"id\": 3,\n      \"name\": \"Transporter T3\",\n      \"laneQuotes\": [\n        {\"laneId\": 1, \"quote\": 39020},\n        {\"laneId\": 2, \"quote\": 20648},\n        {\"laneId\": 3, \"quote\": 31438},\n        {\"laneId\": 4, \"quote\": 36447},\n        {\"laneId\": 5, \"quote\": 12789}\n      ]\n    },\n    {\n      \"id\": 4,\n      \"name\": \"Transporter T4\",\n      \"laneQuotes\": [\n        {\"laneId\": 1, \"quote\": 14400},\n        {\"laneId\": 2, \"quote\": 44514},\n        {\"laneId\": 3, \"quote\": 14316},\n        {\"laneId\": 4, \"quote\": 10678},\n        {\"laneId\": 5, \"quote\": 13032}\n      ]\n    },\n    {\n      \"id\": 5,\n      \"name\": \"Transporter T5\",\n      \"laneQuotes\": [\n        {\"laneId\": 1, \"quote\": 11601},\n        {\"laneId\": 2, \"quote\": 19760},\n        {\"laneId\": 3, \"quote\": 40870},\n        {\"laneId\": 4, \"quote\": 20635},\n        {\"laneId\": 5, \"quote\": 26421}\n      ]\n    },\n    {\n      \"id\": 6,\n      \"name\": \"Transporter T6\",\n      \"laneQuotes\": [\n        {\"laneId\": 1, \"quote\": 35095},\n        {\"laneId\": 2, \"quote\": 12494},\n        {\"laneId\": 3, \"quote\": 17808},\n        {\"laneId\": 4, \"quote\": 36210},\n        {\"laneId\": 5, \"quote\": 39444}\n      ]\n    },\n    {\n      \"id\": 7,\n      \"name\": \"Transporter T7\",\n      \"laneQuotes\": [\n        {\"laneId\": 1, \"quote\": 26070},\n        {\"laneId\": 2, \"quote\": 41098},\n        {\"laneId\": 3, \"quote\": 20932},\n        {\"laneId\": 4, \"quote\": 16897},\n        {\"laneId\": 5, \"quote\": 27938}\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transporters/input",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "transporters", "input"]
+            }
+          }
+        },
+        {
+          "name": "2. Get Optimized Assignment (POST /api/v1/transporters/assignment)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxTransporters\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transporters/assignment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "transporters", "assignment"]
+            }
+          }
+        },
+        {
+          "name": "3. List Registered Lanes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lanes?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "lanes"],
+              "query": [
+                {"key": "page", "value": "0"},
+                {"key": "size", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. List Registered Transporters",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transporters?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "transporters"],
+              "query": [
+                {"key": "page", "value": "0"},
+                {"key": "size", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. List Historical Assignment Runs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/assignments?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "assignments"],
+              "query": [
+                {"key": "page", "value": "0"},
+                {"key": "size", "value": "10"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CSV Dataset Import",
+      "item": [
+        {
+          "name": "1. Import CSV Dataset (Admin only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "transporter_assignment_data.csv"
+                },
+                {
+                  "key": "strictMode",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/import/csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "import", "csv"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

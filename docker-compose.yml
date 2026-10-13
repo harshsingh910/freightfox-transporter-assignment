@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: freightfox-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: freightfox
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d freightfox"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: freightfox-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: freightfox-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      PORT: 8080
+      DATABASE_URL: postgresql://postgres:password123@postgres:5432/freightfox
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      JWT_ISSUER: freightfox-platform
+      JWT_ACCESS_TOKEN_TTL: 86400
+      BOOTSTRAP_ADMIN_ENABLED: "true"
+      BOOTSTRAP_ADMIN_USERNAME: admin
+      BOOTSTRAP_ADMIN_EMAIL: admin@freightfox.com
+      BOOTSTRAP_ADMIN_PASSWORD: Admin@FreightFox2026!
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_FALLBACK_IN_MEMORY: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

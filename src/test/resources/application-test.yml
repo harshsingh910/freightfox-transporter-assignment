@@ -1,0 +1,53 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:freightfoxtest;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  cache:
+    type: none
+  data:
+    redis:
+      repositories:
+        enabled: false
+
+app:
+  jwt:
+    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    issuer: freightfox-platform-test
+    access-token-ttl-seconds: 3600
+  bootstrap-admin:
+    enabled: true
+    username: admin
+    email: admin@freightfox.com
+    password: Admin@FreightFox2026!
+  rate-limit:
+    enabled: true
+    fallback-to-in-memory: true
+    login:
+      capacity: 1000
+      refill-tokens: 1000
+      duration-seconds: 60
+    register:
+      capacity: 1000
+      refill-tokens: 1000
+      duration-seconds: 60
+    assignment:
+      capacity: 1000
+      refill-tokens: 1000
+      duration-seconds: 60
+    import:
+      capacity: 1000
+      refill-tokens: 1000
+      duration-seconds: 60
+    general:
+      capacity: 1000
+      refill-tokens: 1000
+      duration-seconds: 60
