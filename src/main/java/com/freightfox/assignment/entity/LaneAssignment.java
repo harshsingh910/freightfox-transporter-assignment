@@ -1,5 +1,6 @@
 package com.freightfox.assignment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.freightfox.lane.Lane;
 import com.freightfox.transporter.Transporter;
 import jakarta.persistence.Column;
@@ -22,6 +23,7 @@ public class LaneAssignment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "assignment_run_id", nullable = false)
     private AssignmentRun assignmentRun;

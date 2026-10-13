@@ -1,5 +1,6 @@
 package com.freightfox.assignment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,6 +48,7 @@ public class AssignmentRun {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "assignmentRun", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LaneAssignment> laneAssignments = new ArrayList<>();
 

@@ -2,9 +2,9 @@ package com.freightfox.assignment.controller;
 
 import com.freightfox.assignment.dto.AssignmentRequest;
 import com.freightfox.assignment.dto.AssignmentResponse;
+import com.freightfox.assignment.dto.AssignmentRunResponse;
 import com.freightfox.assignment.dto.TransportersInputRequest;
 import com.freightfox.assignment.dto.TransportersInputResponse;
-import com.freightfox.assignment.entity.AssignmentRun;
 import com.freightfox.assignment.service.AssignmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -78,12 +78,12 @@ public class AssignmentController {
 
     @GetMapping("/assignments")
     @Operation(summary = "List historical assignment runs", description = "Paginated list of historical optimization runs")
-    public ResponseEntity<Page<AssignmentRun>> listAssignments(
+    public ResponseEntity<Page<AssignmentRunResponse>> listAssignments(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
         int boundedSize = Math.min(Math.max(1, size), 50);
-        Page<AssignmentRun> runs = assignmentService.getAssignmentRunsPage(PageRequest.of(Math.max(0, page), boundedSize));
+        Page<AssignmentRunResponse> runs = assignmentService.getAssignmentRunsPage(PageRequest.of(Math.max(0, page), boundedSize));
         return ResponseEntity.ok(runs);
     }
 }

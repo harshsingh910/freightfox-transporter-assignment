@@ -212,4 +212,88 @@ class AssignmentControllerTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("INFEASIBLE_ASSIGNMENT"));
     }
+
+    @Test
+    @DisplayName("Regression Test: Should list paginated assignment history without LazyInitializationException")
+    void testPaginatedAssignmentRunsWithoutLazyInitializationException() throws Exception {
+        // 1. Submit input data
+        List<InputLaneDto> lanes = List.of(
+                new InputLaneDto(1, "Mumbai", "Delhi"),
+                new InputLaneDto(2, "Delhi", "Bangalore"),
+                new InputLaneDto(3, "Chennai", "Kolkata")
+        );
+
+        int[][] quotes = {
+                {20000, 10000, 22000}, // T1
+                {48000, 31000, 18000}, // T2
+                {39000, 20000, 31000}  // T3
+        };
+
+        List<InputTransporterDto> transporters = new ArrayList<>();
+        for (int t = 1; t <= 3; t++) {
+            List<InputLaneQuoteDto> laneQuotes = new ArrayList<>();
+            for (int l = 1; l <= 3; l++) {
+                laneQuotes.add(new InputLaneQuoteDto(l, BigDecimal.valueOf(quotes[t - 1][l - 1])));
+            }
+            transporters.add(new InputTransporterDto(t, "Transporter T" + t, laneQuotes));
+        }
+
+        mockMvc.perform(post("/api/v1/transporters/input")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new TransportersInputRequest(lanes, transporters))))
+                .andExpect(status().isOk());
+
+        // 2. Create Assignment Run 1 (maxTransporters=2)
+        MvcResult run1Res = mockMvc.perform(post("/api/v1/transporters/assignment")
+                        .header("Authorization", "Bearer " + userToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AssignmentRequest(2, null))))
+                .andExpect(status().isOk())
+                .andReturn();
+        Number run1Id = objectMapper.readTree(run1Res.getResponse().getContentAsString()).get("assignmentRunId").numberValue();
+
+        // 3. Create Assignment Run 2 (maxTransporters=3)
+        MvcResult run2Res = mockMvc.perform(post("/api/v1/transporters/assignment")
+                        .header("Authorization", "Bearer " + userToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AssignmentRequest(3, null))))
+                .andExpect(status().isOk())
+                .andReturn();
+        Number run2Id = objectMapper.readTree(run2Res.getResponse().getContentAsString()).get("assignmentRunId").numberValue();
+
+        // 4. Query paginated history: Page 0 with size=10 (Contains both runs, no HTTP 500)
+        mockMvc.perform(get("/api/v1/assignments?page=0&size=10")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].id").value(run2Id.longValue()))
+                .andExpect(jsonPath("$.content[0].status").value("SUCCESS"))
+                .andExpect(jsonPath("$.content[0].lanesCovered").value(3))
+                .andExpect(jsonPath("$.content[0].totalCost").exists())
+                .andExpect(jsonPath("$.content[0].laneAssignments.length()").value(3))
+                .andExpect(jsonPath("$.content[0].laneAssignments[0].origin").exists())
+                .andExpect(jsonPath("$.content[0].laneAssignments[0].destination").exists())
+                .andExpect(jsonPath("$.content[0].laneAssignments[0].quoteAmount").exists())
+                .andExpect(jsonPath("$.content[0].laneAssignments[0].transporterName").exists())
+                .andExpect(jsonPath("$.content[1].id").value(run1Id.longValue()))
+                .andExpect(jsonPath("$.content[1].status").value("SUCCESS"))
+                .andExpect(jsonPath("$.content[1].laneAssignments.length()").value(3));
+
+        // 5. Query paginated history: Page 0 with size=1 (First page has run 2)
+        mockMvc.perform(get("/api/v1/assignments?page=0&size=1")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(run2Id.longValue()))
+                .andExpect(jsonPath("$.page.totalElements").value(2))
+                .andExpect(jsonPath("$.page.totalPages").value(2));
+
+        // 6. Query paginated history: Page 1 with size=1 (Second page has run 1)
+        mockMvc.perform(get("/api/v1/assignments?page=1&size=1")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(run1Id.longValue()));
+    }
 }

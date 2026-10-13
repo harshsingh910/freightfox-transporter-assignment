@@ -3,6 +3,7 @@ package com.freightfox.assignment.service;
 import com.freightfox.assignment.dto.AssignmentItemResponse;
 import com.freightfox.assignment.dto.AssignmentRequest;
 import com.freightfox.assignment.dto.AssignmentResponse;
+import com.freightfox.assignment.dto.AssignmentRunResponse;
 import com.freightfox.assignment.dto.InputLaneDto;
 import com.freightfox.assignment.dto.InputLaneQuoteDto;
 import com.freightfox.assignment.dto.InputTransporterDto;
@@ -291,8 +292,73 @@ public class AssignmentService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AssignmentRun> getAssignmentRunsPage(Pageable pageable) {
-        return assignmentRunRepository.findAllByOrderByCreatedAtDesc(pageable);
+    public Page<AssignmentRunResponse> getAssignmentRunsPage(Pageable pageable) {
+        Page<AssignmentRun> runsPage = assignmentRunRepository.findAllByOrderByCreatedAtDesc(pageable);
+        if (runsPage.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        List<Long> runIds = runsPage.getContent().stream()
+                .map(AssignmentRun::getId)
+                .toList();
+
+        List<AssignmentRun> runsWithDetails = assignmentRunRepository.findAllWithDetailsByIdIn(runIds);
+        Map<Long, AssignmentRun> runMap = new HashMap<>();
+        for (AssignmentRun r : runsWithDetails) {
+            runMap.put(r.getId(), r);
+        }
+
+        return runsPage.map(run -> {
+            AssignmentRun detailed = runMap.getOrDefault(run.getId(), run);
+            return mapToRunResponse(detailed);
+        });
+    }
+
+    private AssignmentRunResponse mapToRunResponse(AssignmentRun run) {
+        Set<String> selectedSet = new HashSet<>();
+        List<AssignmentItemResponse> items = new ArrayList<>();
+
+        if (run.getLaneAssignments() != null) {
+            for (LaneAssignment la : run.getLaneAssignments()) {
+                if (la.getTransporter() != null) {
+                    selectedSet.add(la.getTransporter().getExternalTransporterId());
+                }
+                String origin = la.getLane() != null ? la.getLane().getOrigin() : null;
+                String destination = la.getLane() != null ? la.getLane().getDestination() : null;
+                String transporterName = la.getTransporter() != null ? la.getTransporter().getName() : null;
+                Object laneId = la.getLane() != null ? parseOrKeepId(la.getLane().getExternalLaneId()) : null;
+                Object transporterId = la.getTransporter() != null ? parseOrKeepId(la.getTransporter().getExternalTransporterId()) : null;
+
+                items.add(AssignmentItemResponse.of(
+                        laneId,
+                        transporterId,
+                        la.getQuoteAmount(),
+                        origin,
+                        destination,
+                        transporterName
+                ));
+            }
+        }
+
+        List<String> sortedSelected = new ArrayList<>(selectedSet);
+        Collections.sort(sortedSelected);
+        List<Object> selectedFormatted = sortedSelected.stream()
+                .map(this::parseOrKeepId)
+                .toList();
+
+        return AssignmentRunResponse.from(
+                run.getId(),
+                run.getRequestedMaxTransporters(),
+                run.getSelectedTransporterCount(),
+                run.getTotalCost(),
+                run.getStatus(),
+                run.getOptimizationObjective(),
+                run.getLanesCovered(),
+                run.getCreatedBy(),
+                run.getCreatedAt(),
+                selectedFormatted,
+                items
+        );
     }
 
     private Object parseOrKeepId(String idStr) {
